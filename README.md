@@ -20,13 +20,14 @@ Diseñado para correr **bajo demanda en tu propio computador** (enciendes Docker
 * **Matriz Multi-Agente por Rol (ahorro de tokens):**
   * Configura un proveedor y modelo distinto para cada agente interno (`perfil-tracker`, `buscador-ofertas`, `adaptador-cv`, `preparador-entrevistas`) directamente desde la web.
   * Soporta **OpenRouter** (incluidos modelos gratuitos `:free` / `openrouter/free`), **Google Gemini API**, **Anthropic Claude**, **OpenAI**, **Ollama local** y **Antigravity CLI (`agy`)**.
-* **Command Center Web (6 módulos):**
-  1. **Tablero Kanban:** Drag & Drop entre etapas (`Evaluada → CV Listo → Postulado → Entrevista HR → Técnica/Oferta`), zonas de descarte/rechazo, panel lateral con desglose de rúbrica 0–100, logros coincidentes de Neo4j GraphRAG y **visor PDF embebido**.
-  2. **Buscar y Analizar:** Lanzador de rastreo multi-fuente con consola en vivo + analizador instantáneo de cualquier URL con IA.
-  3. **Radar Neo4j:** Fortalezas cubiertas vs. brechas prioritarias de mercado + consultas Cypher copiables.
-  4. **Rechazados / Archivo:** Historial completo de ofertas rechazadas por empresas y descartadas, con buscador, motivos y restauración en 1 clic.
-  5. **API Keys & IA:** Gestión local de llaves (`postulaciones/.ai-config.json`, ignorado por Git, `chmod 600`), matriz por rol, preset *Ahorro Máximo* y botón **Probar Conexión IA** por rol.
-  6. **Cómo Funciona:** Checklist interactivo de puesta en marcha.
+* **Command Center Web (7 módulos):**
+  1. **Mi Perfil & CV (Onboarding):** Sube tus documentos (**LinkedIn PDF**, CV actual PDF/DOCX, certificados), importa tu GitHub/portafolio o cuenta tu trayectoria libremente; define puestos buscados, áreas/keywords, condiciones no negociables y pesos de rúbrica; sintetiza tu **Perfil Maestro + Impact Log en Neo4j** con veracidad estricta (cero invención) y genera o sube tu **CV Base PDF**.
+  2. **Tablero Kanban:** Drag & Drop entre etapas (`Evaluada → CV Listo → Postulado → Entrevista HR → Técnica/Oferta`), zonas de descarte/rechazo, panel lateral con desglose de rúbrica 0–100, logros coincidentes de Neo4j GraphRAG y **visor PDF embebido**.
+  3. **Buscar y Analizar:** Lanzador de rastreo multi-fuente con consola en vivo + analizador instantáneo de cualquier URL con IA.
+  4. **Radar Neo4j:** Fortalezas cubiertas vs. brechas prioritarias de mercado + consultas Cypher copiables.
+  5. **Rechazados / Archivo:** Historial completo de ofertas rechazadas por empresas y descartadas, con buscador, motivos y restauración en 1 clic.
+  6. **API Keys & IA:** Gestión local de llaves (`postulaciones/.ai-config.json`, ignorado por Git, `chmod 600`), matriz por rol, preset *Ahorro Máximo* y botón **Probar Conexión IA** por rol.
+  7. **Cómo Funciona:** Checklist interactivo de puesta en marcha.
 
 ---
 
@@ -147,6 +148,7 @@ python3 scripts/estado.py sincronizar
 │   └── preferencias.example.md
 └── scripts/
     ├── setup.sh                # Inicialización rápida para nuevos usuarios
+    ├── perfil_builder.py       # Ingesta de PDFs/DOCX/LinkedIn/historia + síntesis IA + Perfil estructurado
     ├── estado.py               # Motor de estado canónico con locks (validar, mover, sincronizar)
     ├── rastrear_ats.py         # Recolector multi-fuente (12 APIs/RSS) + filtros duros
     ├── evaluador_ia.py         # Evaluador IA multi-proveedor + Neo4j GraphRAG + rúbrica 0-100

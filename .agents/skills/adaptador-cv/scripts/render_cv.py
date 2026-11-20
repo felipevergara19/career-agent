@@ -192,11 +192,13 @@ def markdown_to_html(md_text: str) -> str:
   close_list()
 
   body = "\n".join(html_lines)
+  m_h1 = re.search(r"^#\s+(.+)$", md_text, flags=re.MULTILINE)
+  doc_title = f"CV - {m_h1.group(1).strip()}" if m_h1 else "CV ATS"
   return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>CV - Felipe Vergara Peñaloza</title>
+<title>{doc_title}</title>
 <style>{ATS_CSS}</style>
 </head>
 <body>

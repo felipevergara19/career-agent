@@ -9,7 +9,7 @@ import sys
 import threading
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
 
@@ -18,6 +18,7 @@ STATIC_DIR = Path(__file__).resolve().parent / "static"
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import evaluador_ia  # noqa: E402
+import perfil_builder  # noqa: E402
 
 app = FastAPI(title="Career Agent", version="2.0.0")
 
@@ -60,6 +61,35 @@ class ConfigIAPayload(BaseModel):
     OLLAMA_URL: str | None = None
     OLLAMA_MODEL: str | None = None
     roles: dict | None = None
+
+
+class PerfilUrlPayload(BaseModel):
+    url: str
+    tipo: str = "auto"
+
+
+class PerfilGuardarPayload(BaseModel):
+    datos_personales: dict | None = None
+    titular_principal: str | None = None
+    resumen_profesional: str | None = None
+    historia_libre: str | None = None
+    skills: dict | None = None
+    experiencias: list | None = None
+    impact_log: list | None = None
+    educacion: list | None = None
+    certificaciones: list | None = None
+    preferencias: dict | None = None
+
+
+class PerfilMarkdownPayload(BaseModel):
+    perfil_md: str | None = None
+    preferencias_md: str | None = None
+
+
+class GenerarCvBasePayload(BaseModel):
+    idioma: str = "es"
+    angulo: str = "base"
+    usar_ia: bool = False
 
 
 def _mask_key(val: str | None) -> str:
@@ -400,7 +430,11 @@ def pipeline_status():
 @app.get("/api/files/{rel_path:path}")
 def serve_file(rel_path: str):
     target = (ROOT / rel_path).resolve()
-    allowed_roots = [(ROOT / "cvs-generados").resolve(), (ROOT / "ofertas").resolve()]
+    allowed_roots = [
+        (ROOT / "cvs-generados").resolve(),
+        (ROOT / "ofertas").resolve(),
+        (ROOT / "perfil" / "documentos").resolve(),
+    ]
     if not any(str(target).startswith(str(base)) for base in allowed_roots):
         raise HTTPException(status_code=404, detail="Archivo no disponible")
 
@@ -459,3 +493,137 @@ def save_config_ia(body: ConfigIAPayload):
 @app.post("/api/config/ia/test")
 def test_config_ia(rol: str | None = None):
     return evaluador_ia.probar_conexion_ia(rol=rol)
+
+
+# ------------------------------------------- Onboarding, Perfil & Documentos
+@app.get("/api/perfil")
+def get_perfil():
+    perfil = perfil_builder.cargar_perfil_estructurado()
+    docs = perfil_builder.listar_documentos()
+    completitud = perfil_builder.calcular_completitud(perfil, docs)
+    perfil_md = (
+        perfil_builder.PERFIL_MD_PATH.read_text(encoding="utf-8", errors="ignore")
+        if perfil_builder.PERFIL_MD_PATH.is_file()
+        else ""
+    )
+    pref_md = (
+        perfil_builder.PREF_MD_PATH.read_text(encoding="utf-8", errors="ignore")
+        if perfil_builder.PREF_MD_PATH.is_file()
+        else ""
+    )
+    return {
+        "perfil": perfil,
+        "documentos": docs,
+        "completitud": completitud,
+        "has_perfil_md": perfil_builder.PERFIL_MD_PATH.is_file(),
+        "has_preferencias_md": perfil_builder.PREF_MD_PATH.is_file(),
+        "perfil_md": perfil_md,
+        "preferencias_md": pref_md,
+    }
+
+
+@app.post("/api/perfil/documentos")
+async def upload_documentos_perfil(
+    files: list[UploadFile] = File(...),
+    categoria: str = Form("auto"),
+    usar_como_cv_base: bool = Form(False),
+):
+    guardados = []
+    errores = []
+    for f in files:
+        try:
+            content = await f.read()
+            entry = perfil_builder.guardar_documento(
+                content=content,
+                filename=f.filename or "documento.txt",
+                categoria=categoria,
+                usar_como_cv_base=usar_como_cv_base and len(guardados) == 0,
+            )
+            guardados.append(entry)
+        except Exception as exc:
+            errores.append({"archivo": f.filename, "error": str(exc)})
+    if not guardados and errores:
+        raise HTTPException(status_code=400, detail=errores[0]["error"])
+    return {"ok": True, "documentos": guardados, "errores": errores}
+
+
+@app.delete("/api/perfil/documentos/{doc_id}")
+def delete_documento_perfil(doc_id: str):
+    if not perfil_builder.eliminar_documento(doc_id):
+        raise HTTPException(status_code=404, detail="Documento no encontrado")
+    return {"ok": True}
+
+
+@app.post("/api/perfil/documentos/{doc_id}/usar-cv-base")
+def set_documento_cv_base(doc_id: str):
+    try:
+        cv_base = perfil_builder.activar_documento_como_cv_base(doc_id)
+        return {"ok": True, "cv_base": cv_base}
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.post("/api/perfil/url")
+def importar_url_perfil(body: PerfilUrlPayload):
+    try:
+        res = perfil_builder.importar_url_perfil(body.url, tipo=body.tipo)
+        return {"ok": True, **res}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Error importando URL: {exc}")
+
+
+@app.post("/api/perfil/guardar")
+def guardar_perfil(body: PerfilGuardarPayload):
+    actual = perfil_builder.cargar_perfil_estructurado()
+    updates = body.model_dump(exclude_none=True)
+    merged = perfil_builder.guardar_perfil_estructurado({**actual, **updates}, regenerar_md=True)
+    _run_py("grafo.py", "--construir")
+    _sync_dbs_best_effort()
+    return {
+        "ok": True,
+        "perfil": merged,
+        "completitud": perfil_builder.calcular_completitud(merged),
+    }
+
+
+@app.post("/api/perfil/sintetizar")
+def sintetizar_perfil():
+    try:
+        res = perfil_builder.sintetizar_perfil_con_ia()
+        _run_py("grafo.py", "--construir")
+        _sync_dbs_best_effort()
+        return {
+            "ok": True,
+            **res,
+            "completitud": perfil_builder.calcular_completitud(res["perfil"]),
+        }
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Error sintetizando perfil: {exc}")
+
+
+@app.post("/api/perfil/generar-cv-base")
+def generar_cv_base(body: GenerarCvBasePayload):
+    args = ["ensamblar_cv.py", "--base", "--idioma", body.idioma, "--angulo", body.angulo]
+    if body.usar_ia:
+        args.append("--usar-ia")
+    res = _run_py(*args)
+    if res.returncode != 0:
+        raise HTTPException(status_code=400, detail=res.stderr or res.stdout)
+    perfil = perfil_builder.cargar_perfil_estructurado()
+    return {"ok": True, "cv_base": perfil.get("cv_base"), "stdout": res.stdout}
+
+
+@app.post("/api/perfil/markdown")
+def guardar_perfil_markdown(body: PerfilMarkdownPayload):
+    perfil_builder.PERFIL_DIR.mkdir(parents=True, exist_ok=True)
+    if body.perfil_md is not None:
+        perfil_builder.PERFIL_MD_PATH.write_text(body.perfil_md, encoding="utf-8")
+    if body.preferencias_md is not None:
+        perfil_builder.PREF_MD_PATH.write_text(body.preferencias_md, encoding="utf-8")
+    _run_py("grafo.py", "--construir")
+    _sync_dbs_best_effort()
+    return {"ok": True}

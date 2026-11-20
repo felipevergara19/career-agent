@@ -39,6 +39,7 @@ sys.path.insert(0, str(SCRIPT_DIR))
 import evaluador_ia  # noqa: E402
 
 CATALOGO_PATH = ROOT / "perfil" / "empresas-target.yaml"
+STRUCTURED_PERFIL_PATH = ROOT / "perfil" / "perfil-estructurado.json"
 HEADERS = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0"}
 
 KEYWORDS_FINOPS = ["finops", "cloud cost", "cost optimization", "cloud financial", r"\bcur\b", "cost transparency", "cloud spend", "savings plans"]
@@ -47,6 +48,43 @@ KEYWORDS_SECOPS = ["secops", "cloud security", "siem", "wazuh", r"\biam\b", "dev
 KEYWORDS_AI_AUTO = ["ai automation", "n8n", "workflow automation", "llm automation", "automation engineer", "ai engineer"]
 
 ALL_KEYWORDS = KEYWORDS_FINOPS + KEYWORDS_DEVOPS_AWS + KEYWORDS_SECOPS + KEYWORDS_AI_AUTO
+
+
+def cargar_preferencias_usuario() -> dict:
+    """Lee preferencias dinámicas desde perfil/perfil-estructurado.json si existe."""
+    if not STRUCTURED_PERFIL_PATH.is_file():
+        return {}
+    try:
+        data = json.loads(STRUCTURED_PERFIL_PATH.read_text(encoding="utf-8"))
+        return (data.get("preferencias") or {}) if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def obtener_keywords_dinamicas(foco: str = "todos") -> list[str]:
+    pref = cargar_preferencias_usuario()
+    areas = pref.get("areas") or []
+    puestos = pref.get("puestos_objetivo") or []
+    if areas or puestos:
+        if foco and foco != "todos":
+            area = next((a for a in areas if (a.get("slug") or "").lower() == foco.lower()), None)
+            if area and area.get("keywords"):
+                return [str(k).strip() for k in area["keywords"] if str(k).strip()]
+        kws: list[str] = []
+        for a in areas:
+            kws.extend([str(k).strip() for k in (a.get("keywords") or []) if str(k).strip()])
+        kws.extend([str(p).strip() for p in puestos if str(p).strip()])
+        if kws:
+            return list(dict.fromkeys(kws))
+
+    return {
+        "finops": KEYWORDS_FINOPS,
+        "secops": KEYWORDS_SECOPS,
+        "secops-siem": KEYWORDS_SECOPS,
+        "ai": KEYWORDS_AI_AUTO,
+        "ai-automation": KEYWORDS_AI_AUTO,
+        "devsecops": KEYWORDS_DEVOPS_AWS,
+    }.get(foco, ALL_KEYWORDS)
 
 RE_EXCLUIR_TITULO = re.compile(
     r"\b(manager|director|vp\b|vice president|head of|chief|principal|staff\b|lead\b|distinguished|"
@@ -371,7 +409,18 @@ def consultar_jobicy() -> list[dict]:
 # -------------------------------------------------------- Portales Remotos
 def consultar_getonboard() -> list[dict]:
     """API pública de Get on Board — excelente fuente para Chile y LatAm 100% remoto."""
-    queries = ["finops", "aws cloud", "devsecops", "cloud security", "secops", "ai automation"]
+    pref = cargar_preferencias_usuario()
+    queries = []
+    for p in (pref.get("puestos_objetivo") or [])[:4]:
+        if str(p).strip():
+            queries.append(str(p).strip())
+    for a in (pref.get("areas") or [])[:3]:
+        if a.get("nombre"):
+            queries.append(str(a["nombre"]).strip())
+    if not queries:
+        queries = ["finops", "aws cloud", "devsecops", "cloud security", "secops", "ai automation"]
+    queries = list(dict.fromkeys(queries))[:6]
+    modalidad_pref = pref.get("modalidad") or "remoto_100"
     seen: set[str] = set()
     jobs: list[dict] = []
     for q in queries:
@@ -384,11 +433,12 @@ def consultar_getonboard() -> list[dict]:
                     continue
                 seen.add(jid)
                 attr = item.get("attributes") or {}
-                if not attr.get("remote"):
-                    continue
-                modality = str(attr.get("remote_modality") or "")
-                if modality in ("no_remote", "hybrid", "temporarily_remote"):
-                    continue
+                if modalidad_pref == "remoto_100":
+                    if not attr.get("remote"):
+                        continue
+                    modality = str(attr.get("remote_modality") or "")
+                    if modality in ("no_remote", "hybrid", "temporarily_remote"):
+                        continue
                 empresa = (attr.get("company") or {}).get("data", {}).get("attributes", {}).get("name") or "Empresa GetOnBoard"
                 zone = attr.get("remote_zone") or "LatAm / Chile"
                 min_s, max_s = attr.get("min_salary"), attr.get("max_salary")
@@ -490,33 +540,54 @@ def consultar_himalayas() -> list[dict]:
 
 # -------------------------------------------------------- Pre-filtro estricto
 def pasa_filtros_duros(job: dict) -> tuple[bool, str]:
-    """Filtra basura evidente ANTES de llamar a la IA o crear archivos."""
+    """Filtra vacantes incompatibles usando las condiciones no negociables del perfil del usuario."""
+    pref = cargar_preferencias_usuario()
+    modalidad_pref = pref.get("modalidad") or "remoto_100"
+    solo_ic = pref.get("solo_ic", True)
+    sen_obj = (pref.get("seniority_objetivo") or "mid").lower()
+    pais = (pref.get("pais_residencia") or "").strip().lower()
+    regiones = [str(r).strip().lower() for r in (pref.get("regiones_aceptadas") or []) if str(r).strip()]
+    exclusiones = [str(x).strip().lower() for x in (pref.get("exclusiones") or []) if str(x).strip()]
+
     titulo = job.get("titulo") or ""
     ubic = job.get("ubicacion") or ""
     wp = (job.get("workplace_type") or "").lower()
     desc_head = (job.get("descripcion") or "")[:2500]
 
-    # 1. Descartar Managers / Directors / Staff / Principal / Non-tech
-    if RE_EXCLUIR_TITULO.search(titulo):
+    # 1. Descartar Managers / Directors / Staff / Principal según perfil del usuario
+    if solo_ic and sen_obj in ("junior", "mid") and RE_EXCLUIR_TITULO.search(titulo):
         return False, "rol de gestión o seniority Staff/Principal/Director"
+    if solo_ic and re.search(r"\b(manager|director|vp\b|vice president|head of|chief)\b", titulo, re.I):
+        return False, "rol de gestión/Manager (perfil configurado como IC)"
 
-    # 2. Descartar presencial o híbrido
-    if wp in ("onsite", "on-site", "hybrid") or RE_HIBRIDO_PRESENCIAL.search(ubic):
-        return False, f"no es 100% remoto ({ubic or wp})"
+    # 1b. Exclusiones personalizadas del usuario
+    for ex in exclusiones:
+        if len(ex) >= 3 and ex not in ("presencial", "híbrido", "hibrido", "us only", "manager", "director"):
+            if re.search(r"\b" + re.escape(ex) + r"\b", f"{titulo} {desc_head[:1200]}", re.I):
+                return False, f"coincide con exclusión no negociable '{ex}'"
 
-    # 3. Descartar restricciones explícitas de otros países (US only, EU only, UK only, etc.)
+    # 2. Modalidad aceptada
+    if modalidad_pref == "remoto_100":
+        if wp in ("onsite", "on-site", "hybrid") or RE_HIBRIDO_PRESENCIAL.search(ubic):
+            return False, f"no es 100% remoto ({ubic or wp})"
+
+    # 3. Restricciones explícitas de otros países (respetando país/regiones del usuario)
     if RE_SOLO_OTRO_PAIS.search(ubic) or RE_SOLO_OTRO_PAIS.search(desc_head):
-        if not re.search(r"\b(chile|latam|latin america|worldwide|anywhere)\b", ubic, re.I):
-            return False, f"restringido fuera de Chile/LatAm ({ubic})"
+        user_allowed = bool(pais and pais in f"{ubic} {desc_head[:1200]}".lower()) or any(
+            r in ubic.lower() for r in regiones if len(r) >= 3
+        )
+        if not user_allowed and not re.search(r"\b(chile|latam|latin america|worldwide|anywhere)\b", ubic, re.I):
+            return False, f"restringido fuera de tu región ({ubic})"
 
-    # 4. Si la ubicación nombra una ciudad específica de US/EU/APAC sin decir Remote/Global/LatAm/Chile
-    if RE_CIUDAD_SIN_REMOTO.search(ubic) and not RE_CHILE_LATAM_GLOBAL.search(ubic) and "remote" not in ubic.lower():
-        return False, f"ubicación fija fuera de Chile ({ubic})"
+    # 4. Si exige 100% remoto y la ubicación nombra una ciudad fija sin remoto
+    if modalidad_pref == "remoto_100":
+        if RE_CIUDAD_SIN_REMOTO.search(ubic) and not RE_CHILE_LATAM_GLOBAL.search(ubic) and "remote" not in ubic.lower():
+            if not (pais and pais in ubic.lower()):
+                return False, f"ubicación fija fuera de tu región ({ubic})"
 
-    # 5. Si no viene de un portal 100% remoto, exigir alguna señal de remoto o LatAm/Chile/Global
-    if wp != "remote" and not RE_CHILE_LATAM_GLOBAL.search(ubic) and "remote" not in ubic.lower():
-        if not re.search(r"\b(100%\s*remote|fully remote|work from anywhere|remote\s*[-–]?\s*(latam|global|worldwide|chile))\b", desc_head, re.I):
-            return False, f"sin señal de 100% remoto ({ubic or 'sin ubicación'})"
+        if wp != "remote" and not RE_CHILE_LATAM_GLOBAL.search(ubic) and "remote" not in ubic.lower():
+            if not re.search(r"\b(100%\s*remote|fully remote|work from anywhere|remote\s*[-–]?\s*(latam|global|worldwide|chile))\b", desc_head, re.I):
+                return False, f"sin señal de 100% remoto ({ubic or 'sin ubicación'})"
 
     return True, "ok"
 
@@ -572,8 +643,8 @@ def main() -> None:
     parser.add_argument(
         "--foco",
         type=str,
-        choices=["finops", "devsecops", "secops", "secops-siem", "ai", "ai-automation", "todos"],
         default="todos",
+        help="Slug del área/foco configurado en tu perfil (o 'todos')",
     )
     parser.add_argument("--agregar", nargs=2, metavar=("ATS", "SLUG"))
     parser.add_argument("--descubrir-url", type=str)
@@ -593,14 +664,7 @@ def main() -> None:
         return
 
     catalogo = cargar_catalogo()
-    kws = {
-        "finops": KEYWORDS_FINOPS,
-        "secops": KEYWORDS_SECOPS,
-        "secops-siem": KEYWORDS_SECOPS,
-        "ai": KEYWORDS_AI_AUTO,
-        "ai-automation": KEYWORDS_AI_AUTO,
-        "devsecops": KEYWORDS_DEVOPS_AWS,
-    }.get(args.foco, ALL_KEYWORDS)
+    kws = obtener_keywords_dinamicas(args.foco)
 
     todos_los_trabajos: list[dict] = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=12) as ex:

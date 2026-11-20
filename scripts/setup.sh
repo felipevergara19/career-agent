@@ -7,7 +7,7 @@ cd "$ROOT_DIR"
 echo "=== Career Agent — Setup inicial ==="
 
 # 1. Crear carpetas locales con los permisos de tu usuario (evita que Docker las cree como root)
-mkdir -p ofertas cvs-generados postulaciones/material entrevistas logs .locks
+mkdir -p perfil/documentos ofertas cvs-generados/base postulaciones/material entrevistas logs .locks
 
 # 2. Copiar plantillas de perfil si aún no existen
 if [[ ! -f perfil/perfil-maestro.md && -f perfil/perfil-maestro.example.md ]]; then

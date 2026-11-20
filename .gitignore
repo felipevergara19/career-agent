@@ -35,6 +35,8 @@ postulaciones/.drive-sync.json
 # Personal Data & Generated Artifacts (keep templates *.example.md tracked)
 perfil/perfil-maestro.md
 perfil/preferencias.md
+perfil/perfil-estructurado.json
+perfil/documentos/
 cvs-generados/
 ofertas/
 entrevistas/

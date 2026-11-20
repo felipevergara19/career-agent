@@ -75,7 +75,17 @@
 
       <!-- Nav links -->
       <nav class="p-3 space-y-1">
-        <div class="px-2.5 pb-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Operación</div>
+        <div class="px-2.5 pb-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Candidato</div>
+
+        <button onclick="showView('perfil')" id="nav-perfil" class="nav-item nav-idle w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs font-medium">
+          <span class="flex items-center gap-2.5">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0ZM4 20a8 8 0 0 1 16 0"/></svg>
+            Mi Perfil &amp; CV
+          </span>
+          <span id="nav-perfil-pct" class="font-mono text-[10px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 tabular">...</span>
+        </button>
+
+        <div class="px-2.5 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Operación</div>
 
         <button onclick="showView('kanban')" id="nav-kanban" class="nav-item nav-active w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs font-medium">
           <span class="flex items-center gap-2.5">
@@ -153,7 +163,8 @@
     <!-- Mobile Nav -->
     <div class="md:hidden flex items-center justify-between px-4 h-12 bg-surface hairline-b sticky top-0 z-30">
       <span class="text-sm font-semibold">Career Agent</span>
-      <div class="flex gap-1.5 text-xs">
+      <div class="flex gap-1.5 text-xs overflow-x-auto">
+        <button onclick="showView('perfil')" class="px-2 py-1 rounded bg-elevated">Perfil</button>
         <button onclick="showView('kanban')" class="px-2 py-1 rounded bg-elevated">Kanban</button>
         <button onclick="showView('buscar')" class="px-2 py-1 rounded bg-elevated">Buscar</button>
         <button onclick="showView('radar')" class="px-2 py-1 rounded bg-elevated">Radar</button>
@@ -161,6 +172,17 @@
         <button onclick="showView('config')" class="px-2 py-1 rounded bg-elevated">IA</button>
         <button onclick="showView('guia')" class="px-2 py-1 rounded bg-elevated">Guía</button>
       </div>
+    </div>
+
+    <!-- Banner contextual si el usuario aún no configura su perfil -->
+    <div id="perfil-setup-banner" class="hidden bg-emerald-950/45 hairline-b px-6 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs">
+      <div class="flex items-center gap-2 text-emerald-200">
+        <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+        <span><strong>Configura tu Perfil Profesional:</strong> sube tu <strong>LinkedIn PDF</strong>, tu CV actual o cuéntanos tu historia + puestos y no negociables para activar el match real.</span>
+      </div>
+      <button onclick="showView('perfil')" class="px-3 py-1 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white font-medium">
+        Configurar Mi Perfil →
+      </button>
     </div>
 
     <!-- Banner contextual si no hay API key -->
@@ -173,6 +195,439 @@
         Configurar API Key →
       </button>
     </div>
+
+    <!-- ======================== VISTA 0: MI PERFIL & ONBOARDING ======================== -->
+    <section id="view-perfil" class="hidden p-6 max-w-[1280px] w-full mx-auto space-y-5">
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 class="text-xl font-semibold tracking-tight text-zinc-50">Mi Perfil, Documentos y Preferencias</h1>
+          <p class="text-xs text-zinc-400 mt-0.5">Sube tu PDF de LinkedIn, tu CV actual o cuéntanos tu trayectoria. Define puestos, áreas y no negociables para calibrar el match y generar tus CVs.</p>
+        </div>
+        <div class="flex items-center gap-2.5">
+          <div class="bg-surface hairline rounded-lg px-3 py-1.5 text-xs flex items-center gap-2">
+            <span class="text-zinc-400">Perfil</span>
+            <strong id="perfil-pct-badge" class="font-mono text-emerald-400 tabular">0%</strong>
+          </div>
+          <button onclick="sintetizarPerfilIA()" id="btn-sintetizar" class="px-4 py-2 text-xs font-semibold rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white">
+            ✨ Construir Perfil con IA
+          </button>
+        </div>
+      </div>
+
+      <!-- Barra de pasos / sub-navegación -->
+      <div class="flex flex-wrap gap-2 bg-surface hairline rounded-xl p-1.5">
+        <button onclick="showPerfilTab('docs')" id="ptab-docs" class="px-3.5 py-2 rounded-lg text-xs font-medium bg-indigo-600/20 text-indigo-200 border border-indigo-500/40">
+          1. Documentos e Historia
+        </button>
+        <button onclick="showPerfilTab('prefs')" id="ptab-prefs" class="px-3.5 py-2 rounded-lg text-xs font-medium text-zinc-400 hover:text-zinc-100 border border-transparent">
+          2. Puestos, Áreas y No Negociables
+        </button>
+        <button onclick="showPerfilTab('resumen')" id="ptab-resumen" class="px-3.5 py-2 rounded-lg text-xs font-medium text-zinc-400 hover:text-zinc-100 border border-transparent">
+          3. Perfil Maestro &amp; GraphRAG
+        </button>
+        <button onclick="showPerfilTab('cvbase')" id="ptab-cvbase" class="px-3.5 py-2 rounded-lg text-xs font-medium text-zinc-400 hover:text-zinc-100 border border-transparent">
+          4. Mi CV Base
+        </button>
+      </div>
+
+      <!-- TAB 1: DOCUMENTOS E HISTORIA -->
+      <div id="perfil-panel-docs" class="space-y-4">
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <!-- Subir documentos -->
+          <div class="bg-surface hairline rounded-xl p-5 space-y-4">
+            <div class="flex items-center justify-between gap-2">
+              <div>
+                <h2 class="text-sm font-semibold text-zinc-50">Subir Documentación (PDF, DOCX, MD, TXT)</h2>
+                <p class="text-xs text-zinc-400 mt-0.5">LinkedIn exportado a PDF, tu CV actual, diplomas, portafolio o notas de proyectos.</p>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs">
+              <div>
+                <label class="block text-[11px] text-zinc-400 mb-1">Tipo de documento</label>
+                <select id="doc-categoria" class="w-full bg-canvas hairline rounded-lg px-2.5 py-2 text-xs text-zinc-200">
+                  <option value="auto">Auto-detectar</option>
+                  <option value="linkedin_pdf">Perfil LinkedIn (PDF)</option>
+                  <option value="cv_actual">Mi CV actual</option>
+                  <option value="certificado">Certificado / Título</option>
+                  <option value="otro">Portafolio / Notas / Otro</option>
+                </select>
+              </div>
+              <div class="flex items-end pb-1">
+                <label class="flex items-center gap-2 text-xs text-zinc-300 cursor-pointer select-none">
+                  <input id="doc-es-cv-base" type="checkbox" class="rounded bg-canvas border-zinc-700 text-indigo-500" />
+                  <span>Usar también como mi CV Base</span>
+                </label>
+              </div>
+            </div>
+
+            <div id="doc-dropzone"
+                 ondragover="event.preventDefault(); this.classList.add('drop-active')"
+                 ondragleave="this.classList.remove('drop-active')"
+                 ondrop="onDropDocs(event)"
+                 onclick="document.getElementById('doc-file-input').click()"
+                 class="cursor-pointer border border-dashed border-zinc-700 hover:border-indigo-500/70 bg-canvas/80 rounded-xl p-6 text-center space-y-2 transition">
+              <div class="w-9 h-9 mx-auto rounded-lg bg-indigo-500/15 border border-indigo-500/30 flex items-center justify-center text-indigo-300">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 16V4m0 0-4 4m4-4 4 4M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+              </div>
+              <div class="text-xs font-medium text-zinc-200">Arrastra archivos aquí o haz clic para seleccionar</div>
+              <div class="text-[11px] text-zinc-500">Soporta PDF, DOCX, Markdown, TXT, JSON (máx. 15 MB por archivo)</div>
+              <input id="doc-file-input" type="file" multiple accept=".pdf,.docx,.md,.txt,.json,.csv,.html" class="hidden" onchange="uploadDocsFiles(this.files)" />
+            </div>
+
+            <div class="bg-canvas hairline rounded-lg p-3 text-[11px] text-zinc-400 leading-relaxed">
+              <strong class="text-zinc-200">Tip rápido para LinkedIn:</strong> entra a tu perfil en LinkedIn → pulsa <span class="font-mono text-indigo-300">Más / Recursos</span> → <span class="font-mono text-indigo-300">Guardar en PDF</span> y arrástralo aquí arriba. Extraeremos toda tu experiencia automáticamente.
+            </div>
+          </div>
+
+          <!-- Enlaces públicos + Documentos cargados -->
+          <div class="bg-surface hairline rounded-xl p-5 space-y-4">
+            <div>
+              <h2 class="text-sm font-semibold text-zinc-50">Importar Enlace (LinkedIn / GitHub / Portafolio)</h2>
+              <p class="text-xs text-zinc-400 mt-0.5">Guarda tu LinkedIn y extrae automáticamente bio/repos públicos de GitHub o tu sitio personal.</p>
+            </div>
+            <div class="flex gap-2">
+              <input id="perfil-url-input" type="url" placeholder="https://github.com/tu-usuario o https://linkedin.com/in/..."
+                     class="flex-1 bg-canvas hairline rounded-lg px-3 py-2 text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-indigo-500" />
+              <button onclick="importarUrlPerfil()" id="btn-import-url" class="px-3.5 py-2 text-xs font-medium rounded-lg bg-elevated hover:bg-zinc-800 hairline text-zinc-100 shrink-0">
+                Importar
+              </button>
+            </div>
+            <div id="perfil-url-aviso" class="hidden text-[11px] bg-amber-950/40 border border-amber-800/50 text-amber-200 rounded-lg p-2.5"></div>
+            <div id="perfil-urls-list" class="space-y-1.5"></div>
+
+            <div class="pt-2 hairline-t space-y-2">
+              <div class="flex items-center justify-between">
+                <h3 class="text-xs font-semibold text-zinc-300">Documentos en tu Bóveda Local</h3>
+                <span id="docs-count" class="text-[11px] font-mono text-zinc-500">0 archivos</span>
+              </div>
+              <div id="docs-list" class="space-y-2 max-h-64 overflow-y-auto pr-1"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Cuéntanos tu historia -->
+        <div class="bg-surface hairline rounded-xl p-5 space-y-3">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h2 class="text-sm font-semibold text-zinc-50">Cuéntanos tu Historia y Trayectoria (Texto Libre)</h2>
+              <p class="text-xs text-zinc-400 mt-0.5">Escríbenos cómo ha sido tu camino profesional, qué problemas has resuelto, logros concretos con números, qué te apasiona y qué NO quieres volver a hacer.</p>
+            </div>
+            <button onclick="guardarHistoria()" class="px-3.5 py-1.5 text-xs font-medium rounded-lg bg-elevated hover:bg-zinc-800 hairline text-zinc-200">
+              Guardar Historia
+            </button>
+          </div>
+
+          <div class="flex flex-wrap gap-1.5">
+            <button type="button" onclick="agregarPromptHistoria('Mi mayor logro cuantificable fue: ')" class="text-[11px] px-2.5 py-1 rounded-full bg-canvas hover:bg-elevated hairline text-zinc-300">+ Mayor logro con números</button>
+            <button type="button" onclick="agregarPromptHistoria('Herramientas/tecnologías que domino en producción: ')" class="text-[11px] px-2.5 py-1 rounded-full bg-canvas hover:bg-elevated hairline text-zinc-300">+ Stack que domino</button>
+            <button type="button" onclick="agregarPromptHistoria('Proyectos personales o freelance relevantes: ')" class="text-[11px] px-2.5 py-1 rounded-full bg-canvas hover:bg-elevated hairline text-zinc-300">+ Proyectos propios</button>
+            <button type="button" onclick="agregarPromptHistoria('Lo que disfruto hacer vs. lo que quiero evitar en mi próximo trabajo: ')" class="text-[11px] px-2.5 py-1 rounded-full bg-canvas hover:bg-elevated hairline text-zinc-300">+ Qué busco y qué evito</button>
+          </div>
+
+          <textarea id="perfil-historia" rows="7" placeholder="Ejemplo: Empecé trabajando en soporte técnico y luego migré a ingeniería cloud en AWS. En mi último trabajo logré reducir $24k/año en costos de infraestructura y automaticé alertas con Python... Ahora busco roles 100% remotos enfocados en..."
+                    class="w-full bg-canvas hairline rounded-xl p-3.5 text-xs text-zinc-100 placeholder-zinc-600 leading-relaxed focus:outline-none focus:border-indigo-500"></textarea>
+
+          <div class="flex flex-wrap items-center justify-between gap-2 pt-1">
+            <span class="text-[11px] text-zinc-500">Se guarda localmente en <code class="font-mono text-zinc-400">perfil/perfil-estructurado.json</code> (ignorado por Git).</span>
+            <div class="flex gap-2">
+              <button onclick="guardarHistoria(); showPerfilTab('prefs')" class="px-3.5 py-1.5 text-xs font-medium rounded-lg bg-elevated hover:bg-zinc-800 hairline text-zinc-200">
+                Siguiente: Puestos y No Negociables →
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 2: PUESTOS, ÁREAS Y NO NEGOCIABLES -->
+      <div id="perfil-panel-prefs" class="hidden space-y-4">
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <!-- Puestos & Modalidad -->
+          <div class="bg-surface hairline rounded-xl p-5 space-y-4">
+            <h2 class="text-sm font-semibold text-zinc-50">Puestos Objetivo y Modalidad</h2>
+
+            <div>
+              <label class="block text-[11px] text-zinc-400 mb-1">Puestos de trabajo que buscas (separados por coma)</label>
+              <input id="pref-puestos" type="text" placeholder="Ej: Cloud FinOps Engineer, DevSecOps Engineer, Backend Python Developer"
+                     class="w-full bg-canvas hairline rounded-lg px-3 py-2 text-xs text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-indigo-500" />
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="block text-[11px] text-zinc-400 mb-1">Modalidad aceptada (No Negociable)</label>
+                <select id="pref-modalidad" class="w-full bg-canvas hairline rounded-lg px-2.5 py-2 text-xs text-zinc-200">
+                  <option value="remoto_100">100% Remoto</option>
+                  <option value="hibrido">Híbrido o Remoto</option>
+                  <option value="presencial">Presencial</option>
+                  <option value="cualquiera">Cualquiera (Flexible)</option>
+                </select>
+              </div>
+              <div>
+                <label class="block text-[11px] text-zinc-400 mb-1">País de residencia</label>
+                <input id="pref-pais" type="text" placeholder="Ej: Chile, México, España, Colombia..."
+                       class="w-full bg-canvas hairline rounded-lg px-3 py-2 text-xs text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-indigo-500" />
+              </div>
+            </div>
+
+            <div>
+              <label class="block text-[11px] text-zinc-400 mb-1">Regiones / elegibilidad aceptada (separadas por coma)</label>
+              <input id="pref-regiones" type="text" placeholder="Ej: Chile, LatAm, Global, Worldwide, Americas"
+                     class="w-full bg-canvas hairline rounded-lg px-3 py-2 text-xs text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-indigo-500" />
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="block text-[11px] text-zinc-400 mb-1">Seniority objetivo</label>
+                <select id="pref-seniority" class="w-full bg-canvas hairline rounded-lg px-2.5 py-2 text-xs text-zinc-200">
+                  <option value="junior">Junior (0–2 años)</option>
+                  <option value="mid">Mid-Level / Semi-Senior (2–4 años)</option>
+                  <option value="senior">Senior (5+ años)</option>
+                  <option value="lead">Staff / Lead / Principal</option>
+                  <option value="manager">Manager / Director / Head</option>
+                </select>
+              </div>
+              <div>
+                <label class="block text-[11px] text-zinc-400 mb-1">Años de experiencia relevantes</label>
+                <input id="pref-anos" type="number" min="0" max="40" value="3"
+                       class="w-full bg-canvas hairline rounded-lg px-3 py-2 text-xs font-mono text-zinc-100 focus:outline-none focus:border-indigo-500" />
+              </div>
+            </div>
+
+            <label class="flex items-center gap-2 text-xs text-zinc-300 cursor-pointer select-none pt-1">
+              <input id="pref-solo-ic" type="checkbox" checked class="rounded bg-canvas border-zinc-700 text-indigo-500" />
+              <span>Solo roles Individual Contributor (IC) — descartar Manager / Director / Scrum Master</span>
+            </label>
+          </div>
+
+          <!-- Compensación, Idiomas y No Negociables -->
+          <div class="bg-surface hairline rounded-xl p-5 space-y-4">
+            <h2 class="text-sm font-semibold text-zinc-50">Compensación, Idiomas y No Negociables</h2>
+
+            <div class="grid grid-cols-4 gap-2">
+              <div>
+                <label class="block text-[11px] text-zinc-400 mb-1">Moneda</label>
+                <select id="pref-moneda" class="w-full bg-canvas hairline rounded-lg px-2 py-2 text-xs text-zinc-200">
+                  <option value="USD">USD</option>
+                  <option value="CLP">CLP</option>
+                  <option value="EUR">EUR</option>
+                  <option value="MXN">MXN</option>
+                  <option value="COP">COP</option>
+                  <option value="ARS">ARS</option>
+                </select>
+              </div>
+              <div>
+                <label class="block text-[11px] text-zinc-400 mb-1">Periodo</label>
+                <select id="pref-periodo" class="w-full bg-canvas hairline rounded-lg px-2 py-2 text-xs text-zinc-200">
+                  <option value="mes">/ mes</option>
+                  <option value="año">/ año</option>
+                </select>
+              </div>
+              <div>
+                <label class="block text-[11px] text-zinc-400 mb-1">Mínimo</label>
+                <input id="pref-sal-min" type="number" min="0" placeholder="3000"
+                       class="w-full bg-canvas hairline rounded-lg px-2.5 py-2 text-xs font-mono text-zinc-100" />
+              </div>
+              <div>
+                <label class="block text-[11px] text-zinc-400 mb-1">Meta Ideal</label>
+                <input id="pref-sal-ideal" type="number" min="0" placeholder="4500"
+                       class="w-full bg-canvas hairline rounded-lg px-2.5 py-2 text-xs font-mono text-zinc-100" />
+              </div>
+            </div>
+
+            <div>
+              <label class="block text-[11px] text-zinc-400 mb-1">Idiomas de trabajo (separados por coma)</label>
+              <input id="pref-idiomas" type="text" placeholder="Ej: Español (Nativo), Inglés (C1)"
+                     class="w-full bg-canvas hairline rounded-lg px-3 py-2 text-xs text-zinc-100 placeholder-zinc-600" />
+            </div>
+
+            <div>
+              <label class="block text-[11px] text-zinc-400 mb-1">Condiciones No Negociables (una por línea)</label>
+              <textarea id="pref-no-negociables" rows="3" placeholder="100% Remoto&#10;Contrato indefinido o B2B en USD&#10;Sin guardias 24/7 no remuneradas"
+                        class="w-full bg-canvas hairline rounded-lg p-2.5 text-xs text-zinc-100 placeholder-zinc-600"></textarea>
+            </div>
+
+            <div>
+              <label class="block text-[11px] text-zinc-400 mb-1">Exclusiones Duras / Deal-breakers (separadas por coma)</label>
+              <input id="pref-exclusiones" type="text" placeholder="Ej: presencial, híbrido, us only, manager, php, consultora"
+                     class="w-full bg-canvas hairline rounded-lg px-3 py-2 text-xs text-zinc-100 placeholder-zinc-600" />
+            </div>
+          </div>
+        </div>
+
+        <!-- Áreas / Ángulos dinámicos -->
+        <div class="bg-surface hairline rounded-xl p-5 space-y-3">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h2 class="text-sm font-semibold text-zinc-50">Áreas / Ángulos de Especialización (Motor de Búsqueda y Variantes de CV)</h2>
+              <p class="text-xs text-zinc-400 mt-0.5">Define las áreas en las que buscas empleo y sus keywords. El rastreador buscará estas keywords y podrás generar CVs enfocados en cada área.</p>
+            </div>
+            <button type="button" onclick="agregarAreaRow()" class="px-3 py-1.5 text-xs font-medium rounded-lg bg-elevated hover:bg-zinc-800 hairline text-indigo-300">
+              + Agregar Área
+            </button>
+          </div>
+          <div id="pref-areas-list" class="space-y-2"></div>
+        </div>
+
+        <!-- Pesos de Rúbrica -->
+        <div class="bg-surface hairline rounded-xl p-5 space-y-3">
+          <div class="flex items-center justify-between">
+            <div>
+              <h2 class="text-sm font-semibold text-zinc-50">Pesos de la Rúbrica de Match (0–100)</h2>
+              <p class="text-xs text-zinc-400 mt-0.5">Ajusta qué pesa más para ti al evaluar cada oferta.</p>
+            </div>
+            <span id="rubrica-sum" class="text-xs font-mono px-2.5 py-1 rounded bg-emerald-500/15 text-emerald-300 tabular">Total: 100/100</span>
+          </div>
+          <div class="grid grid-cols-2 md:grid-cols-5 gap-3 text-xs">
+            <div><label class="block text-[11px] text-zinc-400 mb-1">Técnico / Dominio</label><input id="rub-tecnico" oninput="updateRubricaSum()" type="number" min="0" max="100" value="35" class="w-full bg-canvas hairline rounded-lg px-2.5 py-1.5 font-mono text-zinc-100" /></div>
+            <div><label class="block text-[11px] text-zinc-400 mb-1">Modalidad / Remoto</label><input id="rub-modalidad" oninput="updateRubricaSum()" type="number" min="0" max="100" value="20" class="w-full bg-canvas hairline rounded-lg px-2.5 py-1.5 font-mono text-zinc-100" /></div>
+            <div><label class="block text-[11px] text-zinc-400 mb-1">Idioma</label><input id="rub-idioma" oninput="updateRubricaSum()" type="number" min="0" max="100" value="15" class="w-full bg-canvas hairline rounded-lg px-2.5 py-1.5 font-mono text-zinc-100" /></div>
+            <div><label class="block text-[11px] text-zinc-400 mb-1">Salario / Empresa</label><input id="rub-salario" oninput="updateRubricaSum()" type="number" min="0" max="100" value="15" class="w-full bg-canvas hairline rounded-lg px-2.5 py-1.5 font-mono text-zinc-100" /></div>
+            <div><label class="block text-[11px] text-zinc-400 mb-1">Seniority / Calce</label><input id="rub-seniority" oninput="updateRubricaSum()" type="number" min="0" max="100" value="15" class="w-full bg-canvas hairline rounded-lg px-2.5 py-1.5 font-mono text-zinc-100" /></div>
+          </div>
+          <div class="flex justify-end pt-2">
+            <button onclick="guardarPreferencias()" class="px-5 py-2 text-xs font-semibold rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white">
+              Guardar Preferencias y Sincronizar Match
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 3: PERFIL MAESTRO & GRAPHRAG -->
+      <div id="perfil-panel-resumen" class="hidden space-y-4">
+        <!-- Preguntas faltantes de veracidad estricta -->
+        <div id="perfil-preguntas-box" class="hidden bg-amber-950/35 border border-amber-700/50 rounded-xl p-4 space-y-2">
+          <div class="text-xs font-semibold text-amber-300">Información faltante detectada (Veracidad Estricta — la IA nunca inventa datos)</div>
+          <ul id="perfil-preguntas-list" class="list-disc pl-5 text-xs text-amber-100/90 space-y-1"></ul>
+        </div>
+
+        <!-- Datos de Identidad editables -->
+        <div class="bg-surface hairline rounded-xl p-5 space-y-4">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h2 class="text-sm font-semibold text-zinc-50">Identidad y Posicionamiento para tu CV</h2>
+              <p id="perfil-sintetizado-por" class="text-[11px] font-mono text-zinc-500 mt-0.5"></p>
+            </div>
+            <button onclick="guardarIdentidad()" class="px-4 py-1.5 text-xs font-semibold rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white">
+              Guardar Cambios
+            </button>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+            <div><label class="block text-[11px] text-zinc-400 mb-1">Nombre completo</label><input id="dp-nombre" type="text" class="w-full bg-canvas hairline rounded-lg px-3 py-2 text-zinc-100" /></div>
+            <div><label class="block text-[11px] text-zinc-400 mb-1">Email</label><input id="dp-email" type="email" class="w-full bg-canvas hairline rounded-lg px-3 py-2 text-zinc-100" /></div>
+            <div><label class="block text-[11px] text-zinc-400 mb-1">Teléfono</label><input id="dp-telefono" type="text" class="w-full bg-canvas hairline rounded-lg px-3 py-2 text-zinc-100" /></div>
+            <div><label class="block text-[11px] text-zinc-400 mb-1">Ciudad / Ubicación</label><input id="dp-ubicacion" type="text" class="w-full bg-canvas hairline rounded-lg px-3 py-2 text-zinc-100" /></div>
+            <div><label class="block text-[11px] text-zinc-400 mb-1">LinkedIn URL</label><input id="dp-linkedin" type="url" class="w-full bg-canvas hairline rounded-lg px-3 py-2 text-zinc-100" /></div>
+            <div><label class="block text-[11px] text-zinc-400 mb-1">GitHub / Portafolio</label><input id="dp-github" type="url" class="w-full bg-canvas hairline rounded-lg px-3 py-2 text-zinc-100" /></div>
+          </div>
+
+          <div>
+            <label class="block text-[11px] text-zinc-400 mb-1">Titular Principal (Headline ATS)</label>
+            <input id="dp-titular" type="text" placeholder="Ej: Cloud & Backend Engineer | Python, AWS, Terraform & Cost Optimization"
+                   class="w-full bg-canvas hairline rounded-lg px-3 py-2 text-xs text-zinc-100" />
+          </div>
+          <div>
+            <label class="block text-[11px] text-zinc-400 mb-1">Resumen Profesional</label>
+            <textarea id="dp-resumen" rows="3" class="w-full bg-canvas hairline rounded-lg p-3 text-xs text-zinc-100 leading-relaxed"></textarea>
+          </div>
+          <div>
+            <label class="block text-[11px] text-zinc-400 mb-1">Skills Dominados (separados por coma)</label>
+            <input id="dp-skills-adv" type="text" class="w-full bg-canvas hairline rounded-lg px-3 py-2 text-xs font-mono text-emerald-300" />
+          </div>
+        </div>
+
+        <!-- Logros en Neo4j GraphRAG + Experiencias -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div class="bg-surface hairline rounded-xl p-5 space-y-3">
+            <h3 class="text-sm font-semibold text-violet-300">Impact Log (Nodos sincronizados a Neo4j GraphRAG)</h3>
+            <div id="perfil-logros-preview" class="space-y-2 text-xs max-h-80 overflow-y-auto pr-1"></div>
+          </div>
+          <div class="bg-surface hairline rounded-xl p-5 space-y-3">
+            <h3 class="text-sm font-semibold text-zinc-100">Experiencia y Educación Extraída</h3>
+            <div id="perfil-exp-preview" class="space-y-2.5 text-xs max-h-80 overflow-y-auto pr-1"></div>
+          </div>
+        </div>
+
+        <!-- Editor Markdown avanzado -->
+        <details class="bg-surface hairline rounded-xl p-4">
+          <summary class="cursor-pointer text-xs font-semibold text-zinc-300">Editor Markdown Directo (<code class="font-mono text-zinc-400">perfil/perfil-maestro.md</code> y <code class="font-mono text-zinc-400">preferencias.md</code>)</summary>
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-3 mt-4">
+            <div>
+              <label class="block text-[11px] font-mono text-zinc-400 mb-1">perfil/perfil-maestro.md</label>
+              <textarea id="md-perfil-raw" rows="12" class="w-full bg-canvas hairline rounded-lg p-3 text-[11px] font-mono text-zinc-200"></textarea>
+            </div>
+            <div>
+              <label class="block text-[11px] font-mono text-zinc-400 mb-1">perfil/preferencias.md</label>
+              <textarea id="md-pref-raw" rows="12" class="w-full bg-canvas hairline rounded-lg p-3 text-[11px] font-mono text-zinc-200"></textarea>
+            </div>
+          </div>
+          <div class="flex justify-end mt-3">
+            <button onclick="guardarMarkdownDirecto()" class="px-4 py-1.5 text-xs font-medium rounded-lg bg-elevated hover:bg-zinc-800 hairline text-zinc-100">
+              Guardar Markdowns Directamente
+            </button>
+          </div>
+        </details>
+      </div>
+
+      <!-- TAB 4: MI CV BASE -->
+      <div id="perfil-panel-cvbase" class="hidden space-y-4">
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <!-- Opción A: Generar desde el perfil -->
+          <div class="bg-surface hairline rounded-xl p-5 space-y-4 border-l-2 border-l-indigo-500">
+            <div>
+              <h2 class="text-sm font-semibold text-zinc-50">Opción A — Crear CV ATS desde tu Perfil</h2>
+              <p class="text-xs text-zinc-400 mt-0.5">Ensambla un CV limpio optimizado para filtros ATS (Markdown + HTML + PDF) usando tu información verificada.</p>
+            </div>
+            <div class="grid grid-cols-2 gap-2.5 text-xs">
+              <div>
+                <label class="block text-[11px] text-zinc-400 mb-1">Idioma del CV</label>
+                <select id="cv-base-idioma" class="w-full bg-canvas hairline rounded-lg px-2.5 py-2 text-zinc-200">
+                  <option value="es">Español</option>
+                  <option value="en">English (ATS Global)</option>
+                </select>
+              </div>
+              <div>
+                <label class="block text-[11px] text-zinc-400 mb-1">Enfoque / Área</label>
+                <select id="cv-base-angulo" class="w-full bg-canvas hairline rounded-lg px-2.5 py-2 text-zinc-200">
+                  <option value="base">CV General (Base)</option>
+                </select>
+              </div>
+            </div>
+            <label class="flex items-center gap-2 text-xs text-zinc-300 cursor-pointer select-none">
+              <input id="cv-base-usar-ia" type="checkbox" class="rounded bg-canvas border-zinc-700 text-indigo-500" />
+              <span>Usar IA (rol <code class="font-mono text-indigo-300">adaptador-cv</code>) para pulir/traducir redacción ATS</span>
+            </label>
+            <button onclick="generarCvBase()" id="btn-gen-cv-base" class="w-full py-2 text-xs font-semibold rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white">
+              Generar mi CV Base PDF
+            </button>
+          </div>
+
+          <!-- Opción B: Subir CV ya existente -->
+          <div class="bg-surface hairline rounded-xl p-5 space-y-4 border-l-2 border-l-emerald-500">
+            <div>
+              <h2 class="text-sm font-semibold text-zinc-50">Opción B — Ya tengo un CV (Subir PDF/DOCX)</h2>
+              <p class="text-xs text-zinc-400 mt-0.5">Sube tu CV actual para usarlo como base oficial; además extraemos su texto para alimentar el match y Neo4j GraphRAG.</p>
+            </div>
+            <div onclick="document.getElementById('cv-base-upload-input').click()"
+                 class="cursor-pointer border border-dashed border-emerald-700/60 hover:border-emerald-400 bg-canvas/80 rounded-xl p-6 text-center space-y-1.5 transition">
+              <div class="text-xs font-medium text-emerald-300">Haz clic para subir tu CV existente (PDF o DOCX)</div>
+              <div class="text-[11px] text-zinc-500">Quedará registrado como tu CV Base en <code class="font-mono">cvs-generados/base/</code></div>
+              <input id="cv-base-upload-input" type="file" accept=".pdf,.docx,.md" class="hidden" onchange="subirCvBaseDirecto(this.files)" />
+            </div>
+            <div id="cv-base-status" class="text-xs text-zinc-400 bg-canvas hairline rounded-lg p-3">Sin CV Base configurado todavía.</div>
+          </div>
+        </div>
+
+        <!-- Visor PDF embebido del CV Base -->
+        <div id="cv-base-preview-wrap" class="hidden bg-surface hairline rounded-xl p-4 space-y-3">
+          <div class="flex items-center justify-between">
+            <div class="text-xs font-semibold text-zinc-200">Vista previa de tu CV Base activo</div>
+            <a id="cv-base-open-link" href="#" target="_blank" class="px-3 py-1 text-xs rounded-lg bg-elevated hover:bg-zinc-800 hairline text-emerald-300">Abrir / Descargar PDF ↗</a>
+          </div>
+          <iframe id="cv-base-iframe" class="w-full h-[560px] rounded-xl hairline bg-white"></iframe>
+        </div>
+      </div>
+    </section>
 
     <!-- ======================== VISTA 1: KANBAN ======================== -->
     <section id="view-kanban" class="p-6 max-w-[1520px] w-full mx-auto space-y-5">
@@ -251,7 +706,7 @@
     <section id="view-buscar" class="hidden p-6 max-w-[1280px] w-full mx-auto space-y-6">
       <div>
         <h1 class="text-xl font-semibold tracking-tight text-zinc-50">Buscar y Analizar Ofertas</h1>
-        <p class="text-xs text-zinc-400 mt-0.5">Filtra vacantes 100% remotas elegibles desde Chile/LatAm y evalúalas contra tu rúbrica + logros en Neo4j.</p>
+        <p class="text-xs text-zinc-400 mt-0.5">Filtra vacantes según tus no negociables (modalidad, región, áreas) y evalúalas contra tu rúbrica + logros en Neo4j.</p>
       </div>
 
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -616,10 +1071,10 @@
 
       <!-- Checklist interactivo de estado -->
       <div class="grid grid-cols-1 md:grid-cols-4 gap-3.5">
-        <div class="bg-surface hairline rounded-xl p-4 space-y-2">
+        <div onclick="showView('perfil')" class="cursor-pointer bg-surface hover:bg-elevated/60 hairline rounded-xl p-4 space-y-2 transition">
           <div class="flex justify-between items-center"><span class="text-xs font-mono text-zinc-500">01</span><span id="chk-1" class="text-[11px] font-mono">...</span></div>
-          <div class="text-sm font-semibold">Perfil y Rúbrica</div>
-          <p class="text-xs text-zinc-400">Edita <code class="font-mono text-zinc-300">perfil/perfil-maestro.md</code> y <code class="font-mono text-zinc-300">preferencias.md</code> con tus logros y filtros duros.</p>
+          <div class="text-sm font-semibold">Mi Perfil, Docs y Rúbrica</div>
+          <p class="text-xs text-zinc-400">Sube tu <strong>LinkedIn PDF / CV</strong> o cuenta tu historia y define tus no negociables desde <strong class="text-indigo-300">Mi Perfil &amp; CV →</strong></p>
         </div>
         <div class="bg-surface hairline rounded-xl p-4 space-y-2">
           <div class="flex justify-between items-center"><span class="text-xs font-mono text-zinc-500">02</span><span id="chk-2" class="text-[11px] font-mono">...</span></div>
@@ -761,7 +1216,7 @@
     }
 
     function showView(name) {
-      for (const v of ["kanban", "buscar", "radar", "archivo", "config", "guia"]) {
+      for (const v of ["perfil", "kanban", "buscar", "radar", "archivo", "config", "guia"]) {
         document.getElementById("view-" + v).classList.toggle("hidden", v !== name);
         const nav = document.getElementById("nav-" + v);
         if (nav) {
@@ -769,6 +1224,7 @@
           nav.classList.toggle("nav-idle", v !== name);
         }
       }
+      if (name === "perfil") loadPerfil();
       if (name === "config" || name === "guia") loadConfigIA();
       if (name === "archivo") renderArchivo();
     }
@@ -1146,12 +1602,13 @@
       document.getElementById("d-resumen-box").textContent = o.resumen_ia || o.notas || "Sin resumen de IA registrado todavía.";
 
       const d = o.desglose || {};
+      const rubCfg = PERFIL_STATE?.preferencias?.rubrica || {};
       const barras = [
-        ["Técnico Core (FinOps / AWS / SecOps)", d.tecnico_35, 35],
-        ["100% Remoto Chile / LatAm", d.remoto_chile_20, 20],
-        ["Inglés C1", d.ingles_15, 15],
-        ["Salario / Empresa", d.salario_empresa_15, 15],
-        ["Seniority (1–3 años)", d.seniority_15, 15],
+        ["Alineación Técnica / Dominio Core", d.tecnico_35, rubCfg.tecnico || 35],
+        ["Modalidad y Elegibilidad Geográfica", d.remoto_chile_20, rubCfg.modalidad || 20],
+        ["Idioma y Comunicación", d.ingles_15, rubCfg.idioma || 15],
+        ["Salario / Tipo de Empresa", d.salario_empresa_15, rubCfg.salario || 15],
+        ["Calce de Seniority y Factibilidad", d.seniority_15, rubCfg.seniority || 15],
       ];
       document.getElementById("d-desglose").innerHTML = Object.keys(d).length
         ? barras.map(([lbl, val, max]) => {
@@ -1321,7 +1778,465 @@
       }
     });
 
+    // ======================== MÓDULO: MI PERFIL & ONBOARDING ========================
+    let PERFIL_STATE = null;
+    let PERFIL_AREAS = [];
+
+    function escHtml(s) {
+      return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    }
+
+    function showPerfilTab(tab) {
+      for (const t of ["docs", "prefs", "resumen", "cvbase"]) {
+        document.getElementById("perfil-panel-" + t)?.classList.toggle("hidden", t !== tab);
+        const btn = document.getElementById("ptab-" + t);
+        if (btn) {
+          btn.className = t === tab
+            ? "px-3.5 py-2 rounded-lg text-xs font-medium bg-indigo-600/20 text-indigo-200 border border-indigo-500/40"
+            : "px-3.5 py-2 rounded-lg text-xs font-medium text-zinc-400 hover:text-zinc-100 border border-transparent";
+        }
+      }
+    }
+
+    function agregarPromptHistoria(prefijo) {
+      const ta = document.getElementById("perfil-historia");
+      ta.value = (ta.value ? ta.value.trimEnd() + "\n\n" : "") + prefijo;
+      ta.focus();
+    }
+
+    function updateRubricaSum() {
+      const sum = ["tecnico", "modalidad", "idioma", "salario", "seniority"]
+        .reduce((acc, k) => acc + (parseInt(document.getElementById("rub-" + k)?.value || "0", 10) || 0), 0);
+      const el = document.getElementById("rubrica-sum");
+      if (el) {
+        el.textContent = `Total: ${sum}/100`;
+        el.className = `text-xs font-mono px-2.5 py-1 rounded tabular ${sum === 100 ? "bg-emerald-500/15 text-emerald-300" : "bg-amber-500/15 text-amber-300"}`;
+      }
+    }
+
+    function renderAreasEditor() {
+      const wrap = document.getElementById("pref-areas-list");
+      if (!wrap) return;
+      if (!PERFIL_AREAS.length) {
+        wrap.innerHTML = '<div class="text-xs text-zinc-500 bg-canvas hairline rounded-lg p-3">Sin áreas definidas aún. Haz clic en "+ Agregar Área" (ej: Backend Python, Data Engineering, Cloud FinOps, Product Design) o deja que la IA las sugiera desde tus documentos.</div>';
+        return;
+      }
+      wrap.innerHTML = PERFIL_AREAS.map((a, idx) => `
+        <div class="bg-canvas hairline rounded-lg p-3 grid grid-cols-1 md:grid-cols-12 gap-2 items-center">
+          <div class="md:col-span-3">
+            <input type="text" value="${escHtml(a.nombre || "")}" placeholder="Nombre del área (ej: Backend Python)"
+                   oninput="PERFIL_AREAS[${idx}].nombre = this.value"
+                   class="w-full bg-surface hairline rounded-lg px-2.5 py-1.5 text-xs text-zinc-100" />
+          </div>
+          <div class="md:col-span-2">
+            <input type="text" value="${escHtml(a.slug || "")}" placeholder="slug (auto)"
+                   oninput="PERFIL_AREAS[${idx}].slug = this.value"
+                   class="w-full bg-surface hairline rounded-lg px-2.5 py-1.5 text-xs font-mono text-zinc-300" />
+          </div>
+          <div class="md:col-span-6">
+            <input type="text" value="${escHtml((a.keywords || []).join(", "))}" placeholder="Keywords separadas por coma (ej: python, fastapi, aws, docker)"
+                   oninput="PERFIL_AREAS[${idx}].keywords = this.value.split(',').map(x => x.trim()).filter(Boolean)"
+                   class="w-full bg-surface hairline rounded-lg px-2.5 py-1.5 text-xs font-mono text-zinc-200" />
+          </div>
+          <div class="md:col-span-1 text-right">
+            <button type="button" onclick="PERFIL_AREAS.splice(${idx}, 1); renderAreasEditor()" class="px-2 py-1 text-xs rounded bg-rose-950/60 hover:bg-rose-900/70 text-rose-300">✕</button>
+          </div>
+        </div>
+      `).join("");
+    }
+
+    function agregarAreaRow() {
+      PERFIL_AREAS.push({ nombre: "", slug: "", keywords: [] });
+      renderAreasEditor();
+    }
+
+    function sincronizarDropdownsAngulos(areas) {
+      if (!areas || !areas.length) return;
+      const opts = areas.map(a => `<option value="${escHtml(a.slug)}">${escHtml(a.nombre)}</option>`).join("");
+      const fAng = document.getElementById("filter-angulo");
+      if (fAng) {
+        const cur = fAng.value;
+        fAng.innerHTML = `<option value="">Todos los ángulos</option>${opts}<option value="base">General / Base</option>`;
+        fAng.value = cur;
+      }
+      const pFoco = document.getElementById("pipe-foco");
+      if (pFoco) {
+        const cur = pFoco.value;
+        pFoco.innerHTML = `<option value="">Todas mis áreas</option>${opts}`;
+        pFoco.value = cur;
+      }
+      const cvAng = document.getElementById("cv-base-angulo");
+      if (cvAng) {
+        const cur = cvAng.value;
+        cvAng.innerHTML = `<option value="base">CV General (Base)</option>${opts}`;
+        cvAng.value = cur || "base";
+      }
+    }
+
+    async function loadPerfil() {
+      const data = await fetch("/api/perfil").then(x => x.json());
+      PERFIL_STATE = data.perfil;
+      const p = data.perfil || {};
+      const dp = p.datos_personales || {};
+      const pref = p.preferencias || {};
+      const comp = data.completitud || { porcentaje: 0, listo_para_match: false };
+
+      // Badges y banners
+      document.getElementById("perfil-pct-badge").textContent = `${comp.porcentaje}%`;
+      const navPct = document.getElementById("nav-perfil-pct");
+      if (navPct) {
+        navPct.textContent = `${comp.porcentaje}%`;
+        navPct.className = `font-mono text-[10px] px-1.5 py-0.5 rounded tabular ${comp.porcentaje >= 60 ? "bg-emerald-500/15 text-emerald-300" : "bg-amber-500/15 text-amber-300"}`;
+      }
+      document.getElementById("perfil-setup-banner").classList.toggle("hidden", !!comp.listo_para_match);
+
+      // Tab 1: Historia, URLs y Docs
+      document.getElementById("perfil-historia").value = p.historia_libre || "";
+      const docs = data.documentos || [];
+      document.getElementById("docs-count").textContent = `${docs.length} archivo(s)`;
+      const cvDocId = p.cv_base?.doc_id;
+      document.getElementById("docs-list").innerHTML = docs.length
+        ? docs.map(d => `
+          <div class="bg-canvas hairline rounded-lg p-3 space-y-1.5">
+            <div class="flex items-center justify-between gap-2">
+              <div class="min-w-0">
+                <div class="text-xs font-medium text-zinc-100 truncate">${escHtml(d.nombre_original)}</div>
+                <div class="text-[10px] font-mono text-zinc-500">${escHtml(d.categoria)} · ${(d.caracteres_extraidos || 0).toLocaleString()} chars extraídos</div>
+              </div>
+              <div class="flex items-center gap-1.5 shrink-0">
+                ${cvDocId === d.id
+                  ? '<span class="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/15 border border-emerald-500/30 text-emerald-300">CV BASE</span>'
+                  : `<button onclick="usarDocComoCvBase('${d.id}')" class="px-2 py-1 text-[10px] rounded bg-elevated hover:bg-zinc-800 hairline text-zinc-300">Usar CV Base</button>`}
+                <button onclick="eliminarDoc('${d.id}')" class="px-2 py-1 text-[10px] rounded bg-rose-950/60 hover:bg-rose-900/70 text-rose-300">Borrar</button>
+              </div>
+            </div>
+            ${d.preview ? `<div class="text-[11px] text-zinc-400 line-clamp-2 leading-snug">${escHtml(d.preview)}</div>` : ""}
+          </div>
+        `).join("")
+        : '<div class="text-xs text-zinc-500 bg-canvas hairline rounded-lg p-3">Todavía no subes documentos. Arrastra tu LinkedIn PDF o tu CV actual a la izquierda.</div>';
+
+      const urls = p.urls_referencia || [];
+      document.getElementById("perfil-urls-list").innerHTML = urls.map(u => `
+        <div class="flex items-center justify-between gap-2 bg-canvas hairline rounded-lg px-3 py-1.5 text-[11px]">
+          <a href="${escHtml(u.url)}" target="_blank" class="text-indigo-300 hover:underline truncate">${escHtml(u.titulo || u.url)}</a>
+          <span class="font-mono text-zinc-500 shrink-0">${u.tipo} · ${u.caracteres || 0} chars</span>
+        </div>
+      `).join("");
+
+      // Tab 2: Preferencias
+      document.getElementById("pref-puestos").value = (pref.puestos_objetivo || []).join(", ");
+      document.getElementById("pref-modalidad").value = pref.modalidad || "remoto_100";
+      document.getElementById("pref-pais").value = pref.pais_residencia || dp.pais || "";
+      document.getElementById("pref-regiones").value = (pref.regiones_aceptadas || []).join(", ");
+      document.getElementById("pref-seniority").value = pref.seniority_objetivo || "mid";
+      document.getElementById("pref-anos").value = pref.anos_experiencia ?? 3;
+      document.getElementById("pref-solo-ic").checked = pref.solo_ic !== false;
+      document.getElementById("pref-moneda").value = pref.salario?.moneda || "USD";
+      document.getElementById("pref-periodo").value = pref.salario?.periodo || "mes";
+      document.getElementById("pref-sal-min").value = pref.salario?.minimo || "";
+      document.getElementById("pref-sal-ideal").value = pref.salario?.ideal || "";
+      document.getElementById("pref-idiomas").value = (pref.idiomas_trabajo || []).join(", ");
+      document.getElementById("pref-no-negociables").value = (pref.no_negociables || []).join("\n");
+      document.getElementById("pref-exclusiones").value = (pref.exclusiones || []).join(", ");
+
+      const rub = pref.rubrica || {};
+      document.getElementById("rub-tecnico").value = rub.tecnico ?? 35;
+      document.getElementById("rub-modalidad").value = rub.modalidad ?? 20;
+      document.getElementById("rub-idioma").value = rub.idioma ?? 15;
+      document.getElementById("rub-salario").value = rub.salario ?? 15;
+      document.getElementById("rub-seniority").value = rub.seniority ?? 15;
+      updateRubricaSum();
+
+      PERFIL_AREAS = (pref.areas || []).map(a => ({ ...a, keywords: [...(a.keywords || [])] }));
+      renderAreasEditor();
+      sincronizarDropdownsAngulos(PERFIL_AREAS);
+
+      // Tab 3: Identidad, Preguntas, Logros, Experiencias, Markdown
+      document.getElementById("dp-nombre").value = dp.nombre || "";
+      document.getElementById("dp-email").value = dp.email || "";
+      document.getElementById("dp-telefono").value = dp.telefono || "";
+      document.getElementById("dp-ubicacion").value = dp.ubicacion || "";
+      document.getElementById("dp-linkedin").value = dp.linkedin || "";
+      document.getElementById("dp-github").value = dp.github || dp.portafolio || "";
+      document.getElementById("dp-titular").value = p.titular_principal || "";
+      document.getElementById("dp-resumen").value = p.resumen_profesional || "";
+      document.getElementById("dp-skills-adv").value = (p.skills?.avanzado || []).join(", ");
+      document.getElementById("perfil-sintetizado-por").textContent = p.sintetizado_por ? `Sintetizado por: ${p.sintetizado_por}` : "Aún no sintetizado con IA";
+
+      const pregs = p.preguntas_faltantes || [];
+      document.getElementById("perfil-preguntas-box").classList.toggle("hidden", !pregs.length);
+      document.getElementById("perfil-preguntas-list").innerHTML = pregs.map(q => `<li>${escHtml(q)}</li>`).join("");
+
+      const logros = p.impact_log || [];
+      document.getElementById("perfil-logros-preview").innerHTML = logros.length
+        ? logros.map(l => `
+          <div class="bg-canvas border border-violet-500/25 rounded-lg p-3 space-y-1">
+            <div class="font-medium text-violet-200">${escHtml(l.titulo)}</div>
+            <div class="text-[11px] text-zinc-400">Impacto: <span class="text-zinc-200">${escHtml(l.ahorro || "-")}</span> · Área: <span class="font-mono text-indigo-300">${escHtml(l.angulo || "base")}</span></div>
+            <div class="text-[10px] font-mono text-violet-400">${(l.skills || []).map(escHtml).join(", ")}</div>
+          </div>
+        `).join("")
+        : '<div class="text-zinc-500">Sin logros estructurados aún. Sube tu LinkedIn/CV y pulsa "Construir Perfil con IA".</div>';
+
+      const exps = p.experiencias || [];
+      const edus = p.educacion || [];
+      const certs = p.certificaciones || [];
+      document.getElementById("perfil-exp-preview").innerHTML = (exps.length || edus.length || certs.length)
+        ? [
+            ...exps.map(e => `
+              <div class="bg-canvas hairline rounded-lg p-3 space-y-1">
+                <div class="font-medium text-zinc-100">${escHtml(e.empresa)} — <span class="text-indigo-300">${escHtml(e.cargo)}</span></div>
+                <div class="text-[11px] text-zinc-500">${escHtml(e.periodo || "")} ${e.ubicacion ? "· " + escHtml(e.ubicacion) : ""}</div>
+                <ul class="list-disc pl-4 text-[11px] text-zinc-300 space-y-0.5">${(e.bullets || []).slice(0, 3).map(b => `<li>${escHtml(b)}</li>`).join("")}</ul>
+              </div>
+            `),
+            ...edus.map(ed => `<div class="bg-canvas hairline rounded-lg px-3 py-2 text-[11px] text-zinc-300">🎓 <strong>${escHtml(ed.titulo)}</strong> — ${escHtml(ed.institucion || "")} ${ed.periodo ? "(" + escHtml(ed.periodo) + ")" : ""}</div>`),
+            ...certs.map(c => `<div class="bg-canvas hairline rounded-lg px-3 py-2 text-[11px] text-emerald-300">🏅 <strong>${escHtml(c.nombre)}</strong> ${c.entidad ? "— " + escHtml(c.entidad) : ""}</div>`),
+          ].join("")
+        : '<div class="text-zinc-500">Aquí aparecerán tus experiencias, títulos y certificaciones extraídos de tus documentos.</div>';
+
+      document.getElementById("md-perfil-raw").value = data.perfil_md || "";
+      document.getElementById("md-pref-raw").value = data.preferencias_md || "";
+
+      // Tab 4: CV Base
+      const cvb = p.cv_base || {};
+      const stEl = document.getElementById("cv-base-status");
+      const wrapPrev = document.getElementById("cv-base-preview-wrap");
+      if (cvb.ruta) {
+        stEl.innerHTML = `<span class="text-emerald-300 font-medium">✓ CV Base activo (${escHtml(cvb.modo)}):</span> <code class="font-mono text-zinc-200">${escHtml(cvb.nombre_archivo || cvb.ruta)}</code>`;
+        const fileUrl = "/api/files/" + cvb.ruta.replace(/\.md$/, ".pdf");
+        const isPdfOrMd = cvb.ruta.endsWith(".pdf") || cvb.ruta.endsWith(".md");
+        wrapPrev.classList.toggle("hidden", !isPdfOrMd);
+        if (isPdfOrMd) {
+          document.getElementById("cv-base-open-link").href = fileUrl;
+          document.getElementById("cv-base-iframe").src = fileUrl + "?t=" + Date.now();
+        }
+      } else {
+        stEl.textContent = "Sin CV Base configurado todavía. Genera uno desde tu perfil o sube tu PDF actual.";
+        wrapPrev.classList.add("hidden");
+      }
+    }
+
+    function onDropDocs(ev) {
+      ev.preventDefault();
+      ev.currentTarget.classList.remove("drop-active");
+      if (ev.dataTransfer.files?.length) uploadDocsFiles(ev.dataTransfer.files);
+    }
+
+    async function uploadDocsFiles(fileList) {
+      if (!fileList || !fileList.length) return;
+      const fd = new FormData();
+      for (const f of fileList) fd.append("files", f);
+      fd.append("categoria", document.getElementById("doc-categoria").value);
+      fd.append("usar_como_cv_base", document.getElementById("doc-es-cv-base").checked ? "true" : "false");
+      toast("Subiendo y extrayendo texto de documentos...");
+      const r = await fetch("/api/perfil/documentos", { method: "POST", body: fd });
+      const data = await r.json();
+      if (!r.ok) return toast(data.detail || "Error subiendo documento", "err");
+      document.getElementById("doc-file-input").value = "";
+      toast(`✓ ${data.documentos.length} documento(s) procesado(s)`, "ok");
+      await loadPerfil();
+    }
+
+    async function subirCvBaseDirecto(fileList) {
+      if (!fileList || !fileList.length) return;
+      const fd = new FormData();
+      fd.append("files", fileList[0]);
+      fd.append("categoria", "cv_actual");
+      fd.append("usar_como_cv_base", "true");
+      toast("Subiendo tu CV Base y extrayendo texto...");
+      const r = await fetch("/api/perfil/documentos", { method: "POST", body: fd });
+      const data = await r.json();
+      if (!r.ok) return toast(data.detail || "Error subiendo CV", "err");
+      document.getElementById("cv-base-upload-input").value = "";
+      toast("CV Base subido y activado", "ok");
+      await loadPerfil();
+    }
+
+    async function usarDocComoCvBase(docId) {
+      const r = await fetch(`/api/perfil/documentos/${encodeURIComponent(docId)}/usar-cv-base`, { method: "POST" });
+      if (!r.ok) return toast("No se pudo activar como CV Base", "err");
+      toast("Documento activado como CV Base", "ok");
+      await loadPerfil();
+    }
+
+    async function eliminarDoc(docId) {
+      if (!confirm("¿Eliminar este documento de tu bóveda local?")) return;
+      const r = await fetch(`/api/perfil/documentos/${encodeURIComponent(docId)}`, { method: "DELETE" });
+      if (!r.ok) return toast("Error eliminando documento", "err");
+      toast("Documento eliminado", "ok");
+      await loadPerfil();
+    }
+
+    async function importarUrlPerfil() {
+      const url = document.getElementById("perfil-url-input").value.trim();
+      if (!url) return;
+      const btn = document.getElementById("btn-import-url");
+      const avisoEl = document.getElementById("perfil-url-aviso");
+      btn.disabled = true;
+      btn.textContent = "Importando...";
+      try {
+        const r = await fetch("/api/perfil/url", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url, tipo: "auto" })
+        });
+        const data = await r.json();
+        if (!r.ok) return toast(data.detail || "Error importando URL", "err");
+        document.getElementById("perfil-url-input").value = "";
+        avisoEl.classList.toggle("hidden", !data.aviso);
+        if (data.aviso) avisoEl.textContent = data.aviso;
+        toast("Enlace guardado en tu perfil", "ok");
+        await loadPerfil();
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "Importar";
+      }
+    }
+
+    async function guardarHistoria() {
+      const historia_libre = document.getElementById("perfil-historia").value;
+      const r = await fetch("/api/perfil/guardar", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ historia_libre })
+      });
+      if (!r.ok) return toast("Error guardando historia", "err");
+      toast("Historia guardada", "ok");
+      await loadPerfil();
+    }
+
+    async function guardarPreferencias() {
+      const splitCsv = (id) => (document.getElementById(id).value || "").split(",").map(s => s.trim()).filter(Boolean);
+      const splitLines = (id) => (document.getElementById(id).value || "").split(/\n|,/).map(s => s.trim()).filter(Boolean);
+      const preferencias = {
+        puestos_objetivo: splitCsv("pref-puestos"),
+        modalidad: document.getElementById("pref-modalidad").value,
+        pais_residencia: document.getElementById("pref-pais").value.trim(),
+        regiones_aceptadas: splitCsv("pref-regiones"),
+        seniority_objetivo: document.getElementById("pref-seniority").value,
+        anos_experiencia: parseInt(document.getElementById("pref-anos").value || "0", 10) || 0,
+        solo_ic: document.getElementById("pref-solo-ic").checked,
+        salario: {
+          moneda: document.getElementById("pref-moneda").value,
+          periodo: document.getElementById("pref-periodo").value,
+          minimo: parseInt(document.getElementById("pref-sal-min").value || "0", 10) || 0,
+          ideal: parseInt(document.getElementById("pref-sal-ideal").value || "0", 10) || 0,
+        },
+        idiomas_trabajo: splitCsv("pref-idiomas"),
+        no_negociables: splitLines("pref-no-negociables"),
+        exclusiones: splitCsv("pref-exclusiones"),
+        areas: PERFIL_AREAS.filter(a => (a.nombre || "").trim()),
+        rubrica: {
+          tecnico: parseInt(document.getElementById("rub-tecnico").value || "35", 10),
+          modalidad: parseInt(document.getElementById("rub-modalidad").value || "20", 10),
+          idioma: parseInt(document.getElementById("rub-idioma").value || "15", 10),
+          salario: parseInt(document.getElementById("rub-salario").value || "15", 10),
+          seniority: parseInt(document.getElementById("rub-seniority").value || "15", 10),
+        },
+      };
+      toast("Guardando preferencias y re-sincronizando...");
+      const r = await fetch("/api/perfil/guardar", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ preferencias })
+      });
+      if (!r.ok) return toast("Error guardando preferencias", "err");
+      toast("Preferencias guardadas y aplicadas al motor de match", "ok");
+      await Promise.all([loadPerfil(), loadData()]);
+    }
+
+    async function guardarIdentidad() {
+      const actual = PERFIL_STATE || {};
+      const dp = {
+        ...(actual.datos_personales || {}),
+        nombre: document.getElementById("dp-nombre").value.trim(),
+        email: document.getElementById("dp-email").value.trim(),
+        telefono: document.getElementById("dp-telefono").value.trim(),
+        ubicacion: document.getElementById("dp-ubicacion").value.trim(),
+        linkedin: document.getElementById("dp-linkedin").value.trim(),
+        github: document.getElementById("dp-github").value.trim(),
+      };
+      const skills = {
+        ...(actual.skills || {}),
+        avanzado: (document.getElementById("dp-skills-adv").value || "").split(",").map(s => s.trim()).filter(Boolean),
+      };
+      const r = await fetch("/api/perfil/guardar", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          datos_personales: dp,
+          titular_principal: document.getElementById("dp-titular").value.trim(),
+          resumen_profesional: document.getElementById("dp-resumen").value.trim(),
+          skills,
+        })
+      });
+      if (!r.ok) return toast("Error guardando identidad", "err");
+      toast("Perfil actualizado y sincronizado a Neo4j", "ok");
+      await Promise.all([loadPerfil(), loadData()]);
+    }
+
+    async function sintetizarPerfilIA() {
+      // Asegurar que la historia escrita quede guardada antes de sintetizar
+      const hist = document.getElementById("perfil-historia").value;
+      if (hist !== (PERFIL_STATE?.historia_libre || "")) {
+        await fetch("/api/perfil/guardar", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ historia_libre: hist })
+        });
+      }
+      const btn = document.getElementById("btn-sintetizar");
+      btn.disabled = true;
+      btn.textContent = "Analizando documentos...";
+      toast("Sintetizando tu perfil, skills e Impact Log para Neo4j...");
+      try {
+        const r = await fetch("/api/perfil/sintetizar", { method: "POST" });
+        const data = await r.json();
+        if (!r.ok) return toast(data.detail || "Error sintetizando perfil", "err");
+        toast(`✓ Perfil construido (${data.provider}/${data.model}) y sincronizado a Neo4j`, "ok");
+        await Promise.all([loadPerfil(), loadData(), loadConfigIA()]);
+        showPerfilTab("resumen");
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "✨ Construir Perfil con IA";
+      }
+    }
+
+    async function generarCvBase() {
+      const btn = document.getElementById("btn-gen-cv-base");
+      btn.disabled = true;
+      btn.textContent = "Generando PDF...";
+      toast("Ensamblando tu CV Base ATS...");
+      try {
+        const r = await fetch("/api/perfil/generar-cv-base", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            idioma: document.getElementById("cv-base-idioma").value,
+            angulo: document.getElementById("cv-base-angulo").value,
+            usar_ia: document.getElementById("cv-base-usar-ia").checked,
+          })
+        });
+        const data = await r.json();
+        if (!r.ok) return toast(data.detail || "Error generando CV Base", "err");
+        toast("✓ CV Base PDF generado", "ok");
+        await loadPerfil();
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "Generar mi CV Base PDF";
+      }
+    }
+
+    async function guardarMarkdownDirecto() {
+      const r = await fetch("/api/perfil/markdown", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          perfil_md: document.getElementById("md-perfil-raw").value,
+          preferencias_md: document.getElementById("md-pref-raw").value,
+        })
+      });
+      if (!r.ok) return toast("Error guardando Markdown", "err");
+      toast("Archivos Markdown guardados y grafo re-sincronizado", "ok");
+      await Promise.all([loadPerfil(), loadData()]);
+    }
+
     loadHealth();
+    loadPerfil();
     loadData();
     loadConfigIA();
   </script>

@@ -33,8 +33,19 @@ import yaml
 ROOT = Path(__file__).resolve().parent.parent
 PERFIL_PATH = ROOT / "perfil" / "perfil-maestro.md"
 PREF_PATH = ROOT / "perfil" / "preferencias.md"
+STRUCTURED_PERFIL_PATH = ROOT / "perfil" / "perfil-estructurado.json"
 GRAFO_JSON = ROOT / "postulaciones" / "grafo_conocimiento.json"
 AI_CONFIG_PATH = ROOT / "postulaciones" / ".ai-config.json"
+
+
+def _cargar_perfil_estructurado_safe() -> dict:
+    if not STRUCTURED_PERFIL_PATH.is_file():
+        return {}
+    try:
+        data = json.loads(STRUCTURED_PERFIL_PATH.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
 
 HEADERS = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0"}
 
@@ -317,16 +328,41 @@ def consultar_grafo_contexto(texto_oferta: str) -> list[dict]:
 
 def _construir_prompt(oferta: dict, logros_grafo: list[dict]) -> str:
     preferencias = PREF_PATH.read_text(encoding="utf-8")[:5500] if PREF_PATH.exists() else ""
-    perfil = PERFIL_PATH.read_text(encoding="utf-8")[:4500] if PERFIL_PATH.exists() else ""
+    perfil = PERFIL_PATH.read_text(encoding="utf-8")[:5000] if PERFIL_PATH.exists() else ""
+    estructurado = _cargar_perfil_estructurado_safe()
+    pref_json = estructurado.get("preferencias") or {}
+    rub = pref_json.get("rubrica") or {}
+    w_tec = int(rub.get("tecnico", 35))
+    w_mod = int(rub.get("modalidad", 20))
+    w_idi = int(rub.get("idioma", 15))
+    w_sal = int(rub.get("salario", 15))
+    w_sen = int(rub.get("seniority", 15))
+
+    areas = pref_json.get("areas") or []
+    angulos_permitidos = " | ".join([a["slug"] for a in areas if a.get("slug")] + ["base"]) if areas else "finops | devsecops | secops-siem | ai-automation | base"
+    pais = pref_json.get("pais_residencia") or estructurado.get("datos_personales", {}).get("pais") or "Chile / LatAm"
+    regiones = ", ".join(pref_json.get("regiones_aceptadas") or ["LatAm", "Global"])
+    modalidad_pref = pref_json.get("modalidad") or "remoto_100"
+    solo_ic = pref_json.get("solo_ic", True)
+    seniority_obj = pref_json.get("seniority_objetivo") or "mid"
+    exclusiones = ", ".join(pref_json.get("exclusiones") or [])
 
     grafo_txt = json.dumps(logros_grafo, ensure_ascii=False, indent=2) if logros_grafo else "[]"
     desc_limpia = (oferta.get("descripcion") or "")[:6500]
 
     return f"""Eres un evaluador estricto de ofertas laborales para el candidato descrito en el Perfil Maestro.
-NO infles puntajes ni supongas que una oferta es remota global si no lo indica o si restringe residencia.
+NO infles puntajes ni supongas que una oferta cumple la modalidad o geografía si no lo indica o si restringe residencia fuera del alcance del candidato.
 
 === PREFERENCIAS Y RÚBRICA OBLIGATORIA ===
 {preferencias}
+
+Resumen estructurado de filtros duros:
+- País de residencia: {pais}
+- Regiones/elegibilidad aceptadas: {regiones}
+- Modalidad deseada: {modalidad_pref} (remoto_100 = exige 100% remoto; hibrido = acepta híbrido o remoto; presencial/cualquiera = flexible)
+- Seniority objetivo: {seniority_obj}
+- Solo Individual Contributor (IC, sin Manager/Director): {solo_ic}
+- Exclusiones duras (no negociables): {exclusiones or 'Ninguna extra'}
 
 === PERFIL RESUMIDO DEL CANDIDATO ===
 {perfil}
@@ -348,33 +384,33 @@ INSTRUCCIONES DE SALIDA:
 Responde ÚNICAMENTE con un objeto JSON válido (sin markdown ni texto extra) con exactamente estas claves:
 {{
   "elegible_chile_remoto": true/false,
-  "modalidad_real": "string corta, ej: 100% Remoto (LatAm / Global) o Remoto solo EE.UU. o Híbrido (Austin, TX)",
+  "modalidad_real": "string corta, ej: 100% Remoto (LatAm / Global) o Remoto solo EE.UU. o Híbrido (Ciudad)",
   "es_ic_tecnico": true/false,
   "seniority_detectado": "Junior | Mid-Level | Semi-Senior | Senior | Staff/Lead/Principal | Manager",
-  "idioma": "Inglés (C1) | Español | Bilingüe",
+  "idioma": "Inglés | Español | Bilingüe",
   "salario_detectado": "banda salarial si aparece en texto o 'Sueldo por confirmar'",
-  "angulo": "finops | devsecops | secops-siem | ai-automation | base",
+  "angulo": "{angulos_permitidos}",
   "desglose": {{
-    "tecnico_35": 0-35,
-    "remoto_chile_20": 0-20,
-    "ingles_15": 0-15,
-    "salario_empresa_15": 0-15,
-    "seniority_15": 0-15,
+    "tecnico_35": 0-{w_tec},
+    "remoto_chile_20": 0-{w_mod},
+    "ingles_15": 0-{w_idi},
+    "salario_empresa_15": 0-{w_sal},
+    "seniority_15": 0-{w_sen},
     "penalizacion_seniority": 0 a -25
   }},
   "match_score": 0-100,
   "prioridad": "alta | media | stretch | descartada",
-  "motivo_descarte": null o "motivo claro si descartada (ej: Remote restringido a EE.UU., No es 100% remota, Exceso de Seniority 5+ años, Rol de gestión/Manager, Score <65)",
-  "keywords": ["lista de 4-10 skills/keywords técnicos reales de la oferta"],
+  "motivo_descarte": null o "motivo claro si descartada (ej: Restringido a otro país, No cumple modalidad deseada, Exceso de Seniority, Violación de no negociable, Score <65)",
+  "keywords": ["lista de 4-10 skills/keywords reales de la oferta"],
   "brechas": ["lista de brechas reales frente al perfil del candidato"],
   "logros_grafo_match": ["títulos exactos de los logros del grafo que calzan con esta oferta"],
   "resumen_ia": "2 frases concisas en español explicando exactamente por qué obtuvo este puntaje y si conviene postular."
 }}
 
 REGLAS CRÍTICAS:
-1. Si la oferta exige residencia/permiso en US Only, EU Only, UK Only, Canada Only, o es Híbrida/Presencial -> elegible_chile_remoto=false, remoto_chile_20=0, prioridad="descartada", match_score <= 35.
-2. Si es Engineering Manager, Director, VP, Head of, Scrum Master, Project Manager -> es_ic_tecnico=false, prioridad="descartada", match_score <= 25.
-3. Si pide 5+ años excluyentes, Staff, Principal o Lead -> penalizacion_seniority=-25, prioridad="descartada" (o "stretch" máx 70 pts solo si >80% del stack coincide).
+1. Evalúa `elegible_chile_remoto` como TRUE solo si la oferta es compatible con la modalidad deseada ({modalidad_pref}) y el país/regiones del candidato ({pais} / {regiones}). Si exige residencia en otro país o viola la modalidad deseada -> elegible_chile_remoto=false, remoto_chile_20=0, prioridad="descartada", match_score <= 35.
+2. Si `solo_ic` es true y el cargo es Manager, Director, VP, Head of, Scrum Master o Project Manager -> es_ic_tecnico=false, prioridad="descartada", match_score <= 25.
+3. Si viola alguna exclusión dura del candidato ({exclusiones or 'ninguna'}) -> prioridad="descartada", match_score <= 35.
 4. match_score debe ser coherente con la suma del desglose (clamp 0..100).
 """
 
@@ -452,7 +488,7 @@ def _llamar_anthropic(prompt: str, model: str) -> dict:
     api_key = os.environ["ANTHROPIC_API_KEY"]
     payload = {
         "model": model,
-        "max_tokens": 1200,
+        "max_tokens": 4096,
         "temperature": 0.1,
         "messages": [{"role": "user", "content": prompt}],
     }
@@ -466,7 +502,7 @@ def _llamar_anthropic(prompt: str, model: str) -> dict:
         },
         method="POST",
     )
-    with urllib.request.urlopen(req, timeout=45) as resp:
+    with urllib.request.urlopen(req, timeout=60) as resp:
         data = json.loads(resp.read().decode("utf-8"))
     text = "".join(b.get("text", "") for b in data.get("content", []) if b.get("type") == "text")
     return _extraer_json(text)
@@ -527,19 +563,55 @@ def _llamar_agy(prompt: str) -> dict:
     return _extraer_json(res.stdout)
 
 
+def llamar_llm_json(prompt: str, rol: str | None = None) -> dict:
+    """Invoca al proveedor de IA configurado para el rol indicado y devuelve un JSON parseado."""
+    prov = detectar_proveedor_ia(rol=rol)
+    if prov["provider"] == "heuristica":
+        raise RuntimeError("No hay proveedor de IA configurado. Agrega una API Key en 'API Keys & IA'.")
+    if prov["provider"] == "openrouter":
+        return _llamar_openrouter(prompt, prov["model"])
+    if prov["provider"] == "gemini":
+        return _llamar_gemini(prompt, prov["model"])
+    if prov["provider"] == "anthropic":
+        return _llamar_anthropic(prompt, prov["model"])
+    if prov["provider"] == "openai":
+        return _llamar_openai(prompt, prov["model"])
+    if prov["provider"] == "ollama":
+        return _llamar_ollama(prompt, prov["model"])
+    if prov["provider"] == "agy":
+        return _llamar_agy(prompt)
+    raise ValueError(f"Proveedor no soportado: {prov['provider']}")
+
+
 def evaluar_heuristica(oferta: dict, logros_grafo: list[dict]) -> dict:
     """Evaluador determinista honesto (cuando no hay API key de IA configurada).
-    Aplica la rúbrica de 5 criterios y filtros geográficos/seniority reales."""
+    Usa el perfil estructurado del usuario (áreas, skills, modalidad, país, seniority y exclusiones)."""
     titulo = (oferta.get("titulo") or "").lower()
     ubic = (oferta.get("ubicacion") or "").lower()
     wp = (oferta.get("workplace_type") or "").lower()
     desc = (oferta.get("descripcion") or "").lower()
     full = f"{titulo} {ubic} {desc}"
 
-    # 1. Filtro IC técnico
-    es_manager = any(k in titulo for k in ["manager", "director", "head of", "vp ", "scrum master", "project manager"])
+    estructurado = _cargar_perfil_estructurado_safe()
+    pref = estructurado.get("preferencias") or {}
+    rub = pref.get("rubrica") or {}
+    w_tec = int(rub.get("tecnico", 35))
+    w_mod = int(rub.get("modalidad", 20))
+    w_idi = int(rub.get("idioma", 15))
+    w_sal = int(rub.get("salario", 15))
+    w_sen = int(rub.get("seniority", 15))
 
-    # 2. Filtro Remoto + Chile/LatAm
+    solo_ic = pref.get("solo_ic", True)
+    modalidad_pref = pref.get("modalidad") or "remoto_100"
+    pais = (pref.get("pais_residencia") or estructurado.get("datos_personales", {}).get("pais") or "Chile").lower()
+    regiones = [r.lower() for r in (pref.get("regiones_aceptadas") or ["chile", "latam", "latin america", "worldwide", "anywhere", "global", "americas", "remote", "remoto"])]
+    if pais and pais not in regiones:
+        regiones.append(pais)
+
+    # 1. Filtro IC técnico
+    es_manager = solo_ic and any(k in titulo for k in ["manager", "director", "head of", "vp ", "scrum master", "project manager"])
+
+    # 2. Modalidad y elegibilidad geográfica
     es_hibrido_presencial = (
         wp in ("hybrid", "onsite", "on-site")
         or bool(re.search(r"\b(hybrid|on-site|onsite|in-office|presencial|híbrido)\b", f"{ubic} {wp}"))
@@ -548,76 +620,107 @@ def evaluar_heuristica(oferta: dict, logros_grafo: list[dict]) -> dict:
         re.search(
             r"\b(us only|usa only|u\.s\. only|united states only|must reside in the u\.?s|authorized to work in the u\.?s|"
             r"eu only|europe only|uk only|united kingdom only|canada only|emea only|apac only|india only|"
-            r"germany only|spain only|france only|australia only|brazil only|mexico only|colombia only|"
-            r"us-based|based in the united states|residents of the us)\b",
+            r"germany only|spain only|france only|australia only|us-based|based in the united states|residents of the us)\b",
             f"{ubic} {desc[:2500]}",
         )
     )
-    permite_chile_latam = bool(
-        re.search(
-            r"\b(chile|latam|latin america|south america|worldwide|anywhere|global|americas|remote|remoto|international|b2b|deel)\b",
-            f"{ubic} {desc[:2000]}",
-        )
-    )
-    elegible = (not es_hibrido_presencial) and (not solo_otro_pais) and permite_chile_latam
+    # Si el usuario reside en EE.UU./EU/UK, no penalizar esa restricción
+    if pais in ("usa", "us", "united states", "estados unidos") and "us" in f"{ubic} {desc[:1200]}":
+        solo_otro_pais = False
+    if pais in ("españa", "spain", "alemania", "germany", "francia", "france") and any(k in f"{ubic} {desc[:1200]}" for k in ("eu", "europe", "spain", "españa")):
+        solo_otro_pais = False
 
-    if es_hibrido_presencial:
+    permite_region = any(re.search(r"\b" + re.escape(r) + r"\b", f"{ubic} {desc[:2000]}") for r in regiones if len(r) >= 2)
+    if modalidad_pref == "remoto_100":
+        elegible = (not es_hibrido_presencial) and (not solo_otro_pais) and permite_region
+    elif modalidad_pref == "hibrido":
+        elegible = (not solo_otro_pais) and (permite_region or pais in ubic)
+    else:
+        elegible = not solo_otro_pais
+
+    if es_hibrido_presencial and modalidad_pref == "remoto_100":
         modalidad_real = f"Híbrido/Presencial ({oferta.get('ubicacion') or wp})"
     elif solo_otro_pais:
-        modalidad_real = f"Remoto restringido ({oferta.get('ubicacion') or 'Otro país'})"
+        modalidad_real = f"Restringido fuera de tu región ({oferta.get('ubicacion') or 'Otro país'})"
     elif elegible:
-        modalidad_real = f"100% Remoto ({oferta.get('ubicacion') or 'LatAm / Global'})"
+        modalidad_real = f"Compatible ({oferta.get('ubicacion') or 'Remoto / Global'})"
     else:
         modalidad_real = f"Ubicación no verificada ({oferta.get('ubicacion') or 'Sin especificar'})"
 
-    # 3. Puntaje Técnico Core (0-35)
-    tiene_finops = bool(re.search(r"\b(finops|cloud cost|cost optimization|savings plans|cur|cost explorer|cloud financial)\b", full))
-    tiene_aws = bool(re.search(r"\b(aws|amazon web services|iam|guardduty|cloudwatch|ec2|s3|lambda|boto3)\b", full))
-    tiene_secops = bool(re.search(r"\b(devsecops|secops|siem|wazuh|cloud security|incident response|guardduty)\b", full))
-    tiene_ai = bool(re.search(r"\b(ai automation|llm|openai|claude|gemini|python|automation|n8n|workflows?)\b", full))
+    # 3. Puntaje Técnico Core dinámico usando áreas y skills del usuario
+    areas = pref.get("areas") or []
+    skills_user = [
+        s.lower()
+        for lvl in ("avanzado", "intermedio")
+        for s in (estructurado.get("skills", {}).get(lvl) or [])
+        if isinstance(s, str) and len(s.strip()) >= 2
+    ]
 
-    if tiene_finops and tiene_aws:
-        tecnico = 35
-        angulo = "finops"
-    elif tiene_finops:
-        tecnico = 30
-        angulo = "finops"
-    elif tiene_secops and tiene_aws:
-        tecnico = 28
-        angulo = "secops-siem"
-    elif tiene_aws and tiene_ai:
-        tecnico = 26
-        angulo = "ai-automation"
-    elif tiene_aws:
-        tecnico = 22
-        angulo = "devsecops"
-    elif tiene_ai:
-        tecnico = 16
-        angulo = "ai-automation"
+    angulo = "base"
+    matched_skills_user: list[str] = []
+    if areas or skills_user:
+        best_area_hits = 0
+        for a in areas:
+            kws = [str(k).lower() for k in (a.get("keywords") or []) if str(k).strip()]
+            hits = sum(1 for k in kws if re.search(r"(?<![a-z0-9])" + re.escape(k) + r"(?![a-z0-9])", full))
+            if hits > best_area_hits:
+                best_area_hits = hits
+                angulo = a.get("slug") or "base"
+        matched_skills_user = [
+            s for s in skills_user
+            if re.search(r"(?<![a-z0-9])" + re.escape(s) + r"(?![a-z0-9])", full)
+        ]
+        ratio = min(1.0, (len(set(matched_skills_user)) + best_area_hits * 1.5) / 6.0)
+        tecnico = int(round(w_tec * max(0.2, ratio)))
     else:
-        tecnico = 10
-        angulo = "base"
+        # Fallback clásico si aún no existe perfil-estructurado.json
+        tiene_finops = bool(re.search(r"\b(finops|cloud cost|cost optimization|savings plans|cur|cost explorer|cloud financial)\b", full))
+        tiene_aws = bool(re.search(r"\b(aws|amazon web services|iam|guardduty|cloudwatch|ec2|s3|lambda|boto3)\b", full))
+        tiene_secops = bool(re.search(r"\b(devsecops|secops|siem|wazuh|cloud security|incident response|guardduty)\b", full))
+        tiene_ai = bool(re.search(r"\b(ai automation|llm|openai|claude|gemini|python|automation|n8n|workflows?)\b", full))
+        if tiene_finops and tiene_aws:
+            tecnico, angulo = w_tec, "finops"
+        elif tiene_finops:
+            tecnico, angulo = int(w_tec * 0.85), "finops"
+        elif tiene_secops and tiene_aws:
+            tecnico, angulo = int(w_tec * 0.8), "secops-siem"
+        elif tiene_aws and tiene_ai:
+            tecnico, angulo = int(w_tec * 0.74), "ai-automation"
+        elif tiene_aws:
+            tecnico, angulo = int(w_tec * 0.63), "devsecops"
+        elif tiene_ai:
+            tecnico, angulo = int(w_tec * 0.45), "ai-automation"
+        else:
+            tecnico, angulo = int(w_tec * 0.28), "base"
 
-    # 4. Remoto Chile (0-20)
-    remoto_pts = 20 if elegible else 0
+    # 4. Modalidad / Ubicación
+    remoto_pts = w_mod if elegible else 0
 
-    # 5. Inglés (0-15)
+    # 5. Idioma
     es_ingles = bool(re.search(r"\b(english|responsibilities|requirements|qualifications|benefits|apply)\b", full))
-    idioma = "Inglés (C1)" if es_ingles else "Español"
-    ingles_pts = 15 if es_ingles else 10
+    idioma = "Inglés" if es_ingles else "Español"
+    idiomas_user = " ".join(pref.get("idiomas_trabajo") or ["español", "inglés"]).lower()
+    if es_ingles and ("ingl" in idiomas_user or "english" in idiomas_user):
+        ingles_pts = w_idi
+    elif not es_ingles and ("españ" in idiomas_user or "span" in idiomas_user):
+        ingles_pts = w_idi
+    else:
+        ingles_pts = int(w_idi * 0.65)
 
-    # 6. Salario / Empresa (0-15)
+    # 6. Salario / Empresa
     m_sal = re.search(
-        r"(\$\s?\d{1,3}(?:,\d{3})+(?:\s*[-–to]+\s*\$?\s?\d{1,3}(?:,\d{3})+)?(?:\s*(?:USD|CLP|/yr|/year|/mo|/month))?)",
+        r"(\$\s?\d{1,3}(?:,\d{3})+(?:\s*[-–to]+\s*\$?\s?\d{1,3}(?:,\d{3})+)?(?:\s*(?:USD|CLP|EUR|/yr|/year|/mo|/month))?)",
         oferta.get("descripcion") or "",
         re.I,
     )
     salario_txt = m_sal.group(1) if m_sal else (oferta.get("salario") or "Sueldo por confirmar")
-    salario_pts = 12 if (es_ingles or m_sal) else 9
+    salario_pts = int(w_sal * 0.8) if (es_ingles or m_sal) else int(w_sal * 0.6)
 
-    # 7. Seniority (0-15 + penalización)
-    es_exceso = any(k in titulo for k in ["staff", "principal", "architect", "lead"]) or bool(
-        re.search(r"\b([5-9]|1[0-9])\+?\s*years?\b", desc)
+    # 7. Seniority respecto al seniority objetivo del usuario
+    sen_obj = (pref.get("seniority_objetivo") or "mid").lower()
+    es_exceso = sen_obj in ("junior", "mid") and (
+        any(k in titulo for k in ["staff", "principal", "architect", "lead"])
+        or bool(re.search(r"\b([5-9]|1[0-9])\+?\s*years?\b", desc))
     )
     es_senior = "senior" in titulo or "sr." in titulo or bool(re.search(r"\b4\+?\s*years?\b", desc))
     if es_manager:
@@ -626,29 +729,42 @@ def evaluar_heuristica(oferta: dict, logros_grafo: list[dict]) -> dict:
     elif es_exceso:
         seniority_det = "Staff/Lead/Principal"
         seniority_pts, pen = 0, -25
-    elif es_senior:
+    elif es_senior and sen_obj in ("junior", "mid"):
         seniority_det = "Senior"
-        seniority_pts, pen = 5, -10
+        seniority_pts, pen = int(w_sen * 0.35), -10
     else:
-        seniority_det = "Mid-Level"
-        seniority_pts, pen = 15, 0
+        seniority_det = "Senior" if es_senior else "Mid-Level"
+        seniority_pts, pen = w_sen, 0
+
+    # 8. Exclusiones duras explícitas
+    excl_hit = None
+    for ex in pref.get("exclusiones") or []:
+        ex_s = str(ex).strip().lower()
+        if len(ex_s) >= 3 and ex_s not in ("presencial", "híbrido", "hibrido", "us only", "manager", "director"):
+            if re.search(r"\b" + re.escape(ex_s) + r"\b", f"{titulo} {desc[:1500]}"):
+                excl_hit = ex_s
+                break
 
     raw_score = max(0, min(100, tecnico + remoto_pts + ingles_pts + salario_pts + seniority_pts + pen))
     motivo = None
     if es_manager:
         raw_score = min(raw_score, 25)
         prioridad = "descartada"
-        motivo = "Rol de gestión/Manager (buscamos IC técnico)"
+        motivo = "Rol de gestión/Manager (tu perfil busca IC técnico)"
+    elif excl_hit:
+        raw_score = min(raw_score, 30)
+        prioridad = "descartada"
+        motivo = f"Coincide con exclusión no negociable: '{excl_hit}'"
     elif not elegible:
         raw_score = min(raw_score, 35)
         prioridad = "descartada"
-        motivo = f"No cumple 100% remoto elegible desde Chile ({modalidad_real})"
+        motivo = f"No cumple tu modalidad/geografía ({modalidad_real})"
     elif es_exceso:
         prioridad = "descartada"
-        motivo = "Exceso de seniority (Staff/Lead/Principal o 5+ años excluyentes)"
-    elif raw_score >= 80 and not es_senior:
+        motivo = "Exceso de seniority frente a tu objetivo"
+    elif raw_score >= 80 and not (es_senior and sen_obj in ("junior", "mid")):
         prioridad = "alta"
-    elif es_senior and raw_score >= 65:
+    elif es_senior and sen_obj in ("junior", "mid") and raw_score >= 65:
         raw_score = min(raw_score, 72)
         prioridad = "stretch"
     elif raw_score >= 65:
@@ -658,13 +774,10 @@ def evaluar_heuristica(oferta: dict, logros_grafo: list[dict]) -> dict:
         motivo = f"Score insuficiente ({raw_score}/100) según rúbrica"
 
     brechas = []
-    if es_senior or es_exceso:
+    if es_senior and sen_obj in ("junior", "mid"):
         brechas.append("Pide perfil Senior / más años de experiencia")
-    if not tiene_finops:
-        brechas.append("Sin mención explícita a FinOps / Cloud Cost Optimization")
-    for tool in ["terraform", "kubernetes", "golang", "spark", "azure", "gcp"]:
-        if re.search(rf"\b{tool}\b", full):
-            brechas.append(f"Menciona {tool.capitalize()} (verificar nivel exigido)")
+    if not matched_skills_user and not logros_grafo:
+        brechas.append("Poca superposición directa con tus skills declarados")
 
     return {
         "elegible_chile_remoto": elegible,
@@ -685,13 +798,13 @@ def evaluar_heuristica(oferta: dict, logros_grafo: list[dict]) -> dict:
         "match_score": raw_score,
         "prioridad": prioridad,
         "motivo_descarte": motivo,
-        "keywords": oferta.get("keywords_matched") or [],
+        "keywords": (oferta.get("keywords_matched") or matched_skills_user)[:10],
         "brechas": brechas[:5] or ["Verificar requisitos en detalle"],
         "logros_grafo_match": [l["titulo"] for l in logros_grafo[:4]],
         "resumen_ia": (
-            f"Evaluación heurística (sin API key configurada): {raw_score}/100. "
-            f"{'Cumple remoto elegible.' if elegible else 'Descartada por ubicación/modalidad.'} "
-            f"Configura GEMINI_API_KEY en .env para evaluación semántica completa."
+            f"Evaluación heurística (sin API key): {raw_score}/100. "
+            f"{'Cumple modalidad/geografía.' if elegible else 'Descartada por modalidad/ubicación.'} "
+            f"Configura una API Key en 'API Keys & IA' para evaluación semántica completa."
         ),
         "evaluado_por": "heuristica (sin API key)",
     }

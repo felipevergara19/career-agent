@@ -2,12 +2,13 @@
 """
 Motor de Grafo de Conocimiento (Knowledge Graph) para Career Agent.
 Conecta de forma relacional:
-  (Felipe) ──► (Logros Impact Log) ──► (Skills/AWS) ◄── (Requisitos Ofertas)
-                                                           │
-                                                           ▼
-                                                    (Radar Brechas)
+  (Perfil del Usuario) ──► (Logros Impact Log) ──► (Skills) ◄── (Requisitos Ofertas)
+                                                                    │
+                                                                    ▼
+                                                             (Radar Brechas)
 
-Cero dependencias externas (utiliza estructuras nativas de Python y persistencia JSON).
+Lee dinámicamente `perfil/perfil-estructurado.json` (generado desde el Onboarding
+Web / documentos subidos) o, en su defecto, `perfil/perfil-maestro.md`.
 Totalmente determinista y costo 0 tokens de LLM.
 """
 
@@ -20,115 +21,150 @@ import yaml
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 GRAFO_JSON_PATH = os.path.join(ROOT, "postulaciones", "grafo_conocimiento.json")
+STRUCTURED_PERFIL_PATH = os.path.join(ROOT, "perfil", "perfil-estructurado.json")
+PERFIL_MD_PATH = os.path.join(ROOT, "perfil", "perfil-maestro.md")
 
-# Definición de Nodos de Impacto y Logros verificados de Felipe (Fuente: perfil-maestro.md)
-LOGROS_BASE = [
-    {
-        "id": "logro:cur_duckdb",
-        "titulo": "FinOps Analytics $0-compute con DuckDB y AWS CUR",
-        "angulo": "finops",
-        "ahorro": "$0 compute / análisis directo en S3",
-        "skills": ["aws cur", "duckdb", "s3", "python", "cost explorer", "finops", "sql", "partition pruning"],
-        "metricas": "Auditoría masiva de CUR en S3 sin costo de Athena ni EMR usando httpfs.",
-        "descripcion": "Diseño de workflow FinOps local a costo de cómputo $0 para auditar AWS CUR en S3 con DuckDB (httpfs)."
-    },
-    {
-        "id": "logro:savings_plans",
-        "titulo": "Ahorro $2,500/mo en AWS Savings Plans (99.3% uso)",
-        "angulo": "finops",
-        "ahorro": "$2,500 USD/mes",
-        "skills": ["savings plans", "finops", "aws cost explorer", "commitments", "cost optimization", "focp"],
-        "metricas": "Modelado de gasto histórico para estructurar AWS Compute Savings Plan con 99.3% de utilización sostenida.",
-        "descripcion": "Estructuración y recomendación de Savings Plans en organización multi-cuenta de AWS."
-    },
-    {
-        "id": "logro:elasticache_50",
-        "titulo": "Reducción de 50% de costos en Amazon ElastiCache",
-        "angulo": "finops",
-        "ahorro": "~50% costo ElastiCache",
-        "skills": ["elasticache", "redis", "right-sizing", "aws cloudwatch", "finops", "cost optimization"],
-        "metricas": "Reducción del 50% en facturación de cluster Redis tras correlación de telemetría de CPU/RAM con cero degradación.",
-        "descripcion": "Right-sizing de nodos ElastiCache basado en telemetría de consumo real."
-    },
-    {
-        "id": "logro:eks_700",
-        "titulo": "Ahorro ~$700/mes en Amazon EKS ($8,400/año)",
-        "angulo": "finops",
-        "ahorro": "$700 USD/mes (~$8,400 USD/año)",
-        "skills": ["eks", "kubernetes", "cloudwatch container insights", "cloudtrail", "right-sizing", "autoscaling"],
-        "metricas": "Ajuste de límites de pods y autoescalado en clústeres EKS, eliminando nodos ociosos.",
-        "descripcion": "Optimización de costos y capacidad de cómputo en Amazon EKS."
-    },
-    {
-        "id": "logro:vpc_endpoints",
-        "titulo": "Recorte de tráfico NAT Gateway y logs CloudWatch (-40%)",
-        "angulo": "finops",
-        "ahorro": "~40% volumen de logs + reducción tráfico NAT",
-        "skills": ["vpc endpoints", "nat gateway", "cloudwatch logs", "lambda", "networking", "finops"],
-        "metricas": "VPC Endpoints para S3 y DynamoDB evitando cargos de NAT Gateway; políticas de retención optimizadas.",
-        "descripcion": "Optimización de costos de red y retención de logs en AWS."
-    },
-    {
-        "id": "logro:incident_response",
-        "titulo": "Arquitectura Event-Driven de Incidentes (incident.io / GuardDuty)",
-        "angulo": "secops-siem",
-        "ahorro": "MTTR optimizado y triaje automático",
-        "skills": ["guardduty", "cloudwatch", "eventbridge", "sns", "incident.io", "slack", "secops", "incident response"],
-        "metricas": "Pipeline integral ruteando hallazgos de seguridad y alarmas hacia Slack e incident.io con triaje automático.",
-        "descripcion": "Automatización event-driven de respuesta a incidentes en AWS."
-    },
-    {
-        "id": "logro:iam_governance",
-        "titulo": "Gobernanza IAM Least-Privilege y KMS multi-cuenta",
-        "angulo": "secops-siem",
-        "ahorro": "Superficie de ataque minimizada",
-        "skills": ["iam", "kms", "sts", "least privilege", "aws cli", "boto3", "devsecops", "cloud security"],
-        "metricas": "Auditoría de políticas por ARN/prefijo, controles de descifrado KMS y roles STS asumibles.",
-        "descripcion": "Implementación de políticas de mínimo privilegio y control de acceso en AWS."
-    },
-    {
-        "id": "logro:wazuh_siem",
-        "titulo": "Hardening Wazuh 4.14.10 SIEM y erradicación devil-miner",
-        "angulo": "secops-siem",
-        "ahorro": "Disco de ~111 GB a ~30% / Erradicación malware",
-        "skills": ["wazuh", "siem", "opensearch", "bitdefender", "edr", "incident remediation", "linux security"],
-        "metricas": "Erradicación de criptominero persistente, políticas ISM en OpenSearch (30d hot/365d cold) y logrotate.",
-        "descripcion": "Administración de SIEM Wazuh y respuesta a incidentes críticos de malware."
-    },
-    {
-        "id": "logro:ai_eval_10k",
-        "titulo": "Sistema de evaluación con IA en producción (10,000 llamadas/día)",
-        "angulo": "ai-automation",
-        "ahorro": "Control de calidad 100% automatizado",
-        "skills": ["python", "llms", "ai automation", "rest apis", "bi dashboards", "boto3"],
-        "metricas": "Procesamiento diario de 10k llamadas con modelos LLM y entrega de métricas hacia dashboards analíticos.",
-        "descripcion": "Automatización de evaluación de llamadas y flujos de negocio con Python e IA."
-    },
-    {
-        "id": "logro:ai_slack_rag",
-        "titulo": "Asistente interno RAG en Slack con Gemini",
-        "angulo": "ai-automation",
-        "ahorro": "Acceso instantáneo a documentación interna",
-        "skills": ["rag", "gemini", "embeddings", "vector search", "slack", "python", "ai automation"],
-        "metricas": "Prototipo e implementación de asistente de búsqueda semántica y soporte a operaciones sobre Slack.",
-        "descripcion": "Construcción de RAG corporativo para operaciones de soporte."
-    },
-    {
-        "id": "logro:terraform_telephony",
-        "titulo": "Infraestructura como Código (Terraform) y telefonía VoIP",
-        "angulo": "devsecops",
-        "ahorro": "Aprovisionamiento automatizado y reproducible",
-        "skills": ["terraform", "iac", "voip", "docker", "github actions", "linux"],
-        "metricas": "Módulos de Terraform para servidores SIP, networking y observabilidad automatizada.",
-        "descripcion": "Aprovisionamiento de infraestructura cloud con Terraform."
-    }
-]
+
+def _slug(text: str, fallback: str = "item") -> str:
+    s = (text or "").lower()
+    for a, b in (("á", "a"), ("é", "e"), ("í", "i"), ("ó", "o"), ("ú", "u"), ("ñ", "n")):
+        s = s.replace(a, b)
+    s = re.sub(r"[^a-z0-9]+", "-", s).strip("-")
+    return s[:48] or fallback
+
+
+def _cargar_perfil_y_logros() -> tuple[dict, list[dict], list[str]]:
+    """Carga el perfil real del usuario, sus logros verificados y skills desde
+    perfil/perfil-estructurado.json (o fallback desde perfil/perfil-maestro.md)."""
+    if os.path.isfile(STRUCTURED_PERFIL_PATH):
+        try:
+            with open(STRUCTURED_PERFIL_PATH, encoding="utf-8") as fh:
+                data = json.load(fh)
+            dp = data.get("datos_personales") or {}
+            nombre = (dp.get("nombre") or "Usuario").strip()
+            perfil_node = {
+                "id": f"perfil:{_slug(nombre, 'usuario')}",
+                "nombre": nombre,
+                "titulo": (data.get("titular_principal") or "Profesional").strip(),
+                "certificaciones": [
+                    c.get("nombre") for c in (data.get("certificaciones") or []) if isinstance(c, dict) and c.get("nombre")
+                ],
+                "idiomas": [
+                    f"{i.get('idioma')} ({i.get('nivel', '')})".strip()
+                    for i in (dp.get("idiomas") or [])
+                    if isinstance(i, dict) and i.get("idioma")
+                ],
+            }
+            skills_user = [
+                str(s).strip().lower()
+                for lvl in ("avanzado", "intermedio")
+                for s in ((data.get("skills") or {}).get(lvl) or [])
+                if str(s).strip()
+            ]
+            logros = []
+            for idx, lg in enumerate(data.get("impact_log") or [], 1):
+                if not isinstance(lg, dict) or not (lg.get("titulo") or "").strip():
+                    continue
+                lid = lg.get("id") or f"logro:{_slug(lg['titulo'], f'item-{idx}')}"
+                if not lid.startswith("logro:"):
+                    lid = f"logro:{_slug(lid)}"
+                sks = [str(s).strip().lower() for s in (lg.get("skills") or []) if str(s).strip()]
+                if not sks and skills_user:
+                    # Vincular skills mencionados literalmente en el título/descripción
+                    txt = f"{lg.get('titulo', '')} {lg.get('descripcion', '')}".lower()
+                    sks = [s for s in skills_user if re.search(r"(?<![a-z0-9])" + re.escape(s) + r"(?![a-z0-9])", txt)]
+                logros.append({
+                    "id": lid,
+                    "titulo": lg["titulo"].strip(),
+                    "angulo": (lg.get("angulo") or "base").strip().lower(),
+                    "ahorro": (lg.get("ahorro") or lg.get("metricas") or "Impacto verificado").strip(),
+                    "skills": sks,
+                    "metricas": (lg.get("metricas") or lg.get("ahorro") or "").strip(),
+                    "descripcion": (lg.get("descripcion") or lg["titulo"]).strip(),
+                })
+
+            # Si no hay impact_log todavía pero sí experiencias con bullets, construir logros base desde bullets
+            if not logros:
+                for exp in data.get("experiencias") or []:
+                    emp = exp.get("empresa") or "Experiencia"
+                    for bi, bullet in enumerate((exp.get("bullets") or [])[:4], 1):
+                        b_txt = str(bullet).strip()
+                        if not b_txt:
+                            continue
+                        sks = [
+                            s for s in skills_user
+                            if re.search(r"(?<![a-z0-9])" + re.escape(s) + r"(?![a-z0-9])", b_txt.lower())
+                        ]
+                        logros.append({
+                            "id": f"logro:{_slug(emp)}-{bi}",
+                            "titulo": b_txt[:110],
+                            "angulo": ((data.get("preferencias") or {}).get("areas") or [{}])[0].get("slug", "base"),
+                            "ahorro": emp,
+                            "skills": sks,
+                            "metricas": b_txt[:180],
+                            "descripcion": b_txt,
+                        })
+            return perfil_node, logros, list(dict.fromkeys(skills_user))
+        except Exception:
+            pass
+
+    # Fallback: extraer lo básico de perfil/perfil-maestro.md
+    if os.path.isfile(PERFIL_MD_PATH):
+        txt = open(PERFIL_MD_PATH, encoding="utf-8", errors="ignore").read()
+        m_nom = re.search(r"\*\*Nombre completo:\*\*\s*`?([^`\n]+)`?", txt, re.I)
+        m_tit = re.search(r"\*\*Titular Principal:\*\*\s*`?([^`\n]+)`?", txt, re.I)
+        nombre = m_nom.group(1).strip() if m_nom else "Usuario"
+        titulo = m_tit.group(1).strip() if m_tit else "Perfil Profesional"
+        skills_found: list[str] = []
+        for m_sk in re.finditer(r"[🟢🟡]\s*\*\*[^*]+:\*\*\s*(.+)", txt):
+            skills_found.extend([s.strip().lower() for s in m_sk.group(1).split(",") if s.strip()])
+        logros_md: list[dict] = []
+        for i, m_b in enumerate(re.finditer(r"^\s*-\s+\*\*([^*]{10,120})\*\*(.*)$", txt, re.M), 1):
+            tit = m_b.group(1).strip().rstrip(":")
+            rest = m_b.group(2).strip(" —-:")
+            if tit.lower() in ("nombre completo", "ubicación base", "email", "teléfono", "linkedin", "github", "titular principal", "rol", "idiomas", "español", "inglés"):
+                continue
+            sks = [s for s in skills_found if len(s) >= 2 and s in f"{tit} {rest}".lower()]
+            logros_md.append({
+                "id": f"logro:{_slug(tit, f'md-{i}')}",
+                "titulo": tit,
+                "angulo": "base",
+                "ahorro": "Logro en Perfil Maestro",
+                "skills": sks,
+                "metricas": rest[:160],
+                "descripcion": f"{tit} {rest}".strip(),
+            })
+        return (
+            {
+                "id": f"perfil:{_slug(nombre, 'usuario')}",
+                "nombre": nombre,
+                "titulo": titulo,
+                "certificaciones": [],
+                "idiomas": [],
+            },
+            logros_md[:15],
+            list(dict.fromkeys(skills_found)),
+        )
+
+    return (
+        {
+            "id": "perfil:usuario",
+            "nombre": "Perfil sin configurar",
+            "titulo": "Configura tu perfil en Mi Perfil & Onboarding",
+            "certificaciones": [],
+            "idiomas": [],
+        },
+        [],
+        [],
+    )
 
 
 class KnowledgeGraph:
     def __init__(self):
         self.nodes = {}
         self.edges = []
+        self.perfil_node = {}
+        self.logros = []
 
     def add_node(self, node_id, node_type, data):
         self.nodes[node_id] = {
@@ -146,23 +182,38 @@ class KnowledgeGraph:
         })
 
     def build_from_repo(self):
-        # 1. Nodo Perfil de Felipe
-        self.add_node("perfil:felipe", "perfil", {
-            "nombre": "Felipe Vergara Peñaloza",
-            "titulo": "Cloud FinOps & DevSecOps Engineer",
-            "certificaciones": ["FinOps Certified Practitioner (FOCP)", "Google Cybersecurity", "IBM AI Developer"],
-            "idiomas": ["Inglés (C1)", "Español (Nativo)"]
+        perfil_node, logros, skills_user = _cargar_perfil_y_logros()
+        self.perfil_node = perfil_node
+        self.logros = logros
+        pid = perfil_node["id"]
+
+        # 1. Nodo Perfil del Usuario
+        self.add_node(pid, "perfil", {
+            "nombre": perfil_node["nombre"],
+            "titulo": perfil_node["titulo"],
+            "certificaciones": perfil_node.get("certificaciones") or [],
+            "idiomas": perfil_node.get("idiomas") or [],
         })
 
-        # 2. Nodos de Logros y Conexiones a Skills
-        for logro in LOGROS_BASE:
-            self.add_node(logro["id"], "logro", logro)
-            self.add_edge("perfil:felipe", logro["id"], "EJECUTO_LOGRO", weight=2.0)
+        # 1b. Skills declarados directamente en el perfil
+        for sk in skills_user:
+            sk_id = f"skill:{sk}"
+            if sk_id not in self.nodes:
+                self.add_node(sk_id, "skill", {"nombre": sk})
+            self.add_edge(pid, sk_id, "DOMINA_SKILL", weight=1.2)
 
-            for sk in logro["skills"]:
-                sk_id = f"skill:{sk}"
+        # 2. Nodos de Logros y Conexiones a Skills
+        for logro in logros:
+            self.add_node(logro["id"], "logro", logro)
+            self.add_edge(pid, logro["id"], "EJECUTO_LOGRO", weight=2.0)
+
+            for sk in logro.get("skills") or []:
+                sk_clean = str(sk).strip().lower()
+                if not sk_clean:
+                    continue
+                sk_id = f"skill:{sk_clean}"
                 if sk_id not in self.nodes:
-                    self.add_node(sk_id, "skill", {"nombre": sk})
+                    self.add_node(sk_id, "skill", {"nombre": sk_clean})
                 self.add_edge(logro["id"], sk_id, "DEMUESTRA_SKILL", weight=1.5)
 
         # 3. Leer todas las ofertas en ofertas/**/*.md
@@ -190,38 +241,37 @@ class KnowledgeGraph:
                     "url": o.get("url")
                 })
 
-                # Empresa
-                empresa_id = f"empresa:{o.get('empresa', '').lower().replace(' ', '-')}"
+                empresa_id = f"empresa:{_slug(o.get('empresa') or 'empresa')}"
                 if empresa_id not in self.nodes:
                     self.add_node(empresa_id, "empresa", {"nombre": o.get("empresa")})
                 self.add_edge(oid, empresa_id, "PERTENECE_A")
 
-                # Conectar Keywords de la oferta a Skills del grafo
                 for kw in o.get("keywords", []) or []:
                     kw_clean = str(kw).lower().strip()
+                    if not kw_clean:
+                        continue
                     sk_id = f"skill:{kw_clean}"
                     if sk_id not in self.nodes:
                         self.add_node(sk_id, "skill", {"nombre": kw_clean})
                     self.add_edge(oid, sk_id, "REQUIERE_SKILL", weight=1.0)
 
-                # Conectar Brechas
                 for br in o.get("brechas", []) or []:
                     br_clean = str(br).strip()
-                    br_id = f"brecha:{br_clean[:40].lower().replace(' ', '-')}"
+                    if not br_clean:
+                        continue
+                    br_id = f"brecha:{_slug(br_clean[:40])}"
                     if br_id not in self.nodes:
                         self.add_node(br_id, "brecha", {"descripcion": br_clean})
                     self.add_edge(oid, br_id, "TIENE_BRECHA", weight=1.0)
 
-                # Estado de postulación
                 if o.get("estado") == "postulado":
-                    self.add_edge("perfil:felipe", oid, "POSTULO_A", weight=3.0)
+                    self.add_edge(pid, oid, "POSTULO_A", weight=3.0)
 
             except Exception:
                 continue
 
     def match_oferta(self, id_o_slug):
         """Encuentra los logros con mayor cercanía relacional a una oferta."""
-        # Buscar el nodo de oferta
         target_node = None
         for nid, data in self.nodes.items():
             if data.get("type") == "oferta" and (id_o_slug in nid or id_o_slug in data.get("id_oferta", "")):
@@ -232,23 +282,19 @@ class KnowledgeGraph:
             return {"error": f"Oferta '{id_o_slug}' no encontrada en el grafo."}
 
         oid = target_node["id"]
-        # Obtener skills requeridas por la oferta
-        skills_oferta = set()
-        for edge in self.edges:
-            if edge["from"] == oid and edge["rel"] == "REQUIERE_SKILL":
-                skills_oferta.add(edge["to"])
+        skills_oferta = {
+            edge["to"] for edge in self.edges
+            if edge["from"] == oid and edge["rel"] == "REQUIERE_SKILL"
+        }
 
-        # Puntuación relacional de cada logro
         scores_logros = []
-        for logro in LOGROS_BASE:
+        for logro in self.logros:
             lid = logro["id"]
-            # Skills demostradas por este logro
-            skills_logro = set()
-            for edge in self.edges:
-                if edge["from"] == lid and edge["rel"] == "DEMUESTRA_SKILL":
-                    skills_logro.add(edge["to"])
+            skills_logro = {
+                edge["to"] for edge in self.edges
+                if edge["from"] == lid and edge["rel"] == "DEMUESTRA_SKILL"
+            }
 
-            # Coincidencias directas y parciales
             interseccion = []
             for s_logro in skills_logro:
                 s_name = s_logro.replace("skill:", "")
@@ -257,18 +303,18 @@ class KnowledgeGraph:
                     if s_name in of_name or of_name in s_name:
                         interseccion.append(s_name)
 
-            score = len(interseccion) * 2.0
-            if logro["angulo"] == target_node.get("angulo"):
+            score = len(set(interseccion)) * 2.0
+            if logro.get("angulo") == target_node.get("angulo"):
                 score += 3.0
 
             scores_logros.append({
                 "logro_id": lid,
                 "titulo": logro["titulo"],
-                "angulo": logro["angulo"],
-                "ahorro": logro["ahorro"],
+                "angulo": logro.get("angulo"),
+                "ahorro": logro.get("ahorro"),
                 "score_relacional": score,
                 "skills_coincidentes": list(set(interseccion)),
-                "descripcion": logro["descripcion"]
+                "descripcion": logro.get("descripcion", "")
             })
 
         scores_logros.sort(key=lambda x: x["score_relacional"], reverse=True)
@@ -285,7 +331,6 @@ class KnowledgeGraph:
         }
 
     def radar_brechas(self):
-        """Calcula qué brechas son las más recurrentes en el grafo y bloquean postulaciones."""
         conteo_brechas = {}
         for edge in self.edges:
             if edge["rel"] == "TIENE_BRECHA":
@@ -298,9 +343,9 @@ class KnowledgeGraph:
         return [{"brecha": k, "frecuencia": v} for k, v in ordenadas if v > 0]
 
     def exportar_mermaid(self, id_o_slug=None):
-        """Genera diagrama Mermaid visualizable en Markdown."""
+        nombre = self.perfil_node.get("nombre", "Usuario")
         lines = ["```mermaid", "flowchart TD"]
-        lines.append('    Felipe["🧑 Felipe Vergara (FOCP)"]:::perfil')
+        lines.append(f'    Perfil["🧑 {nombre}"]:::perfil')
 
         if id_o_slug:
             match = self.match_oferta(id_o_slug)
@@ -310,14 +355,13 @@ class KnowledgeGraph:
                 for i, lg in enumerate(match["top_logros_relacionales"]):
                     lid = f"L{i}"
                     lines.append(f'    {lid}["🏆 {lg["titulo"]}\\n({lg["ahorro"]})"]:::logro')
-                    lines.append(f'    Felipe --> {lid}')
+                    lines.append(f'    Perfil --> {lid}')
                     lines.append(f'    {lid} -->|Score: {lg["score_relacional"]}| Oferta')
         else:
-            # Resumen de los 4 ángulos de impacto
-            for lg in LOGROS_BASE[:5]:
+            for lg in self.logros[:5]:
                 slug = lg["id"].replace("logro:", "")
                 lines.append(f'    {slug}["🏆 {lg["titulo"]}"]:::logro')
-                lines.append(f'    Felipe --> {slug}')
+                lines.append(f'    Perfil --> {slug}')
 
         lines.append("    classDef perfil fill:#1e293b,stroke:#3b82f6,stroke-width:2px,color:#fff;")
         lines.append("    classDef logro fill:#065f46,stroke:#10b981,stroke-width:2px,color:#fff;")
@@ -364,7 +408,6 @@ def main():
         print(f"🎯 MATCH RELACIONAL DE GRAFO: {of['empresa']} — {of['cargo']}")
         print(f"Ángulo: {of['angulo']} | Skills detectadas: {of['skills_totales_detectadas']}")
         print(f"=======================================================\n")
-        print("🏆 TOP LOGROS DE FELIPE RECOMENDADOS POR EL GRAFO:\n")
         for i, lg in enumerate(res["top_logros_relacionales"], 1):
             print(f"{i}. {lg['titulo']} [Score: {lg['score_relacional']}]")
             print(f"   • Impacto: {lg['ahorro']}")

@@ -82,6 +82,24 @@ ANGULOS = {
     "ai-automation": "Ángulo 4: AI Automation, n8n, Python & RAG",
     "base": "CV Maestro Base",
 }
+
+
+def cargar_angulos_dinamicos() -> dict[str, str]:
+  ang = dict(ANGULOS)
+  p = ROOT / "perfil" / "perfil-estructurado.json"
+  if p.is_file():
+    try:
+      data = json.loads(p.read_text(encoding="utf-8"))
+      for a in (data.get("preferencias") or {}).get("areas") or []:
+        sl = (a.get("slug") or "").strip().lower()
+        if sl:
+          ang[sl] = a.get("nombre") or sl
+    except Exception:
+      pass
+  return ang
+
+
+SLUG_ANGULO_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,48}$")
 CAMPOS_OFERTA = [
     "tipo", "id", "legacy_id", "empresa", "cargo", "url", "portal", "fecha_captura",
     "modalidad", "idioma", "salario", "match_score", "prioridad", "estado", "angulo",
@@ -203,8 +221,9 @@ def validar_ofertas(ofertas: list[dict]) -> tuple[list[str], list[str]]:
       errores.append(f"{r}: estado '{estado}' inválido; usa {list(ESTADOS)}")
     if prio not in PRIORIDADES:
       errores.append(f"{r}: prioridad '{prio}' inválida; usa {list(PRIORIDADES)}")
-    if o["angulo"] is not None and o["angulo"] not in ANGULOS:
-      errores.append(f"{r}: angulo '{o['angulo']}' inválido; usa {list(ANGULOS)} o null")
+    angulos_validos = cargar_angulos_dinamicos()
+    if o["angulo"] is not None and o["angulo"] not in angulos_validos and not SLUG_ANGULO_RE.match(str(o["angulo"])):
+      errores.append(f"{r}: angulo '{o['angulo']}' inválido; usa slug minúsculas o null")
     if score is None:
       if estado != "descartada":
         errores.append(f"{r}: match_score null solo se permite en ofertas descartadas")
@@ -250,7 +269,8 @@ def validar_ofertas(ofertas: list[dict]) -> tuple[list[str], list[str]]:
       continue
     if meta.get("tipo") != "cv":
       errores.append(f"{r}: tipo debe ser 'cv'")
-    if meta.get("angulo") not in ANGULOS:
+    angulos_validos = cargar_angulos_dinamicos()
+    if meta.get("angulo") not in angulos_validos and not SLUG_ANGULO_RE.match(str(meta.get("angulo") or "")):
       errores.append(f"{r}: angulo inválido '{meta.get('angulo')}'")
     if meta.get("idioma") not in ("en", "es"):
       errores.append(f"{r}: idioma debe ser 'en' o 'es'")

@@ -113,8 +113,38 @@ def sync_postgres(database_url: str) -> int:
                     detalle TEXT,
                     created_at TIMESTAMPTZ DEFAULT NOW()
                 );
+                CREATE TABLE IF NOT EXISTS perfil_usuario (
+                    id TEXT PRIMARY KEY,
+                    nombre TEXT,
+                    titular TEXT,
+                    datos JSONB DEFAULT '{}'::jsonb,
+                    updated_at TIMESTAMPTZ DEFAULT NOW()
+                );
                 """
             )
+            # Sincronizar perfil estructurado si existe
+            sp = ROOT / "perfil" / "perfil-estructurado.json"
+            if sp.is_file():
+                try:
+                    pdata = json.loads(sp.read_text(encoding="utf-8"))
+                    cur.execute(
+                        """
+                        INSERT INTO perfil_usuario (id, nombre, titular, datos, updated_at)
+                        VALUES ('principal', %s, %s, %s::jsonb, NOW())
+                        ON CONFLICT (id) DO UPDATE SET
+                            nombre = EXCLUDED.nombre,
+                            titular = EXCLUDED.titular,
+                            datos = EXCLUDED.datos,
+                            updated_at = NOW();
+                        """,
+                        (
+                            (pdata.get("datos_personales") or {}).get("nombre") or "",
+                            pdata.get("titular_principal") or "",
+                            json.dumps(pdata, ensure_ascii=False),
+                        ),
+                    )
+                except Exception:
+                    pass
             # Eliminar filas huérfanas que ya fueron borradas de ofertas/
             if ids_vigentes:
                 cur.execute("DELETE FROM ofertas WHERE id <> ALL(%s)", (ids_vigentes,))

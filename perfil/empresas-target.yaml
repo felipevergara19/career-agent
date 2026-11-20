@@ -1,0 +1,49 @@
+# Catálogo de empresas y ATS para rastreo directo de vacantes
+# Este archivo es dinámico: el agente rastreador puede agregar nuevas empresas descubiertas automáticamente.
+
+greenhouse:
+  - canonical
+  - datadog
+  - gitlab
+  - caylent
+  - ramp
+  - remote
+  - grafana
+  - automattic
+  - elastic
+  - hashicorp
+  - crowdstrike
+  - wiz
+  - sentry
+  - zapier
+  - cloudflare
+  - auth0
+
+ashby:
+  - supabase
+  - n8n
+  - ashby
+  - truelogic
+  - linear
+  - replicate
+  - together-ai
+  - modal
+  - mistral
+  - perplexity
+  - modal-labs
+  - cursor
+
+lever:
+  - xepelin
+  - toku
+  - klarna
+  - kraken
+  - postman
+  - plaid
+  - coursera
+
+portales_directos:
+  - nombre: Get on Board
+    url_base: https://www.getonbrd.com/jobs-feed
+  - nombre: FinOps Foundation
+    url_base: https://jobs.finops.org/

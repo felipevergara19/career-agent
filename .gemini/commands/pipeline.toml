@@ -1,0 +1,7 @@
+description = "Director: pipeline extremo a extremo (buscar → CVs → material → sincronizar → Drive)"
+
+prompt = """
+Lee `AGENTS.md` y sigue `.agent/workflows/pipeline.md` paso a paso, leyendo la skill de cada rol en `.agents/skills/<rol>/SKILL.md` antes de ejecutarla.
+
+Argumentos: {{args}}
+"""

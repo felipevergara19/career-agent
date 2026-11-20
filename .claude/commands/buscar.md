@@ -1,0 +1,10 @@
+---
+description: Búsqueda diaria de ofertas 100% remotas con rúbrica 0–100
+argument-hint: '[foco opcional: finops | devsecops | secops-siem | ai-automation]'
+---
+
+Lee `AGENTS.md` (protocolo §2) y `.agents/skills/buscador-ofertas/SKILL.md` completos y síguelos al pie de la letra.
+
+Tarea: Ejecuta la búsqueda diaria completa (Pasos 1–5). Si hay un foco en los argumentos, limita la búsqueda a ese ángulo.
+
+Argumentos: $ARGUMENTS

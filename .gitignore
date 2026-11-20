@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+ENV/
+.pytest_cache/
+
+# OS & Editors
+.DS_Store
+Thumbs.db
+~$*.xlsx
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Secrets, Credentials & Environment
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+credentials*.json
+token*.json
+rclone.conf
+
+# Runtime, Locks & Logs
+.locks/
+logs/
+postulaciones/.drive-sync.json
+
+# Personal Data & Generated Artifacts (keep templates *.example.md tracked)
+perfil/perfil-maestro.md
+perfil/preferencias.md
+cvs-generados/
+ofertas/
+entrevistas/
+postulaciones/

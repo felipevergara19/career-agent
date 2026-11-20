@@ -1,0 +1,52 @@
+# Matriz rol → herramienta → modelo.
+# La leen scripts/lanzar.py y scripts/pipeline.py. El campo `model:` de .claude/agents/*.md
+# debe coincidir con `modelos.claude` (scripts/lanzar.py --verificar lo comprueba).
+#
+# Criterio: el modelo más barato que hace bien la tarea.
+#   - Mecánico (mover estados, sincronizar, KPIs)      → modelo rápido/barato
+#   - Volumen + juicio con rúbrica (búsqueda web)        → modelo medio
+#   - Redacción de alta calidad (CV, material)           → modelo medio-alto
+#   - Razonamiento profundo y poco frecuente (entrevista) → modelo alto
+#
+# Ver modelos disponibles:  claude --help  |  cursor-agent --list-models
+
+roles:
+  perfil-tracker:
+    herramienta: cursor          # herramienta por defecto al lanzarlo headless
+    modelos:
+      claude: haiku
+      cursor: composer-2.5-fast
+      antigravity: flash_lite    # subagente mecánico (estados, KPIs, brechas)
+  buscador-ofertas:
+    herramienta: cursor
+    modelos:
+      claude: sonnet
+      cursor: gpt-5.5-medium
+      antigravity: flash         # búsqueda web + evaluación con rúbrica
+  adaptador-cv:
+    herramienta: claude
+    modelos:
+      claude: sonnet
+      cursor: claude-sonnet-5-thinking-high
+      antigravity: flash         # redacción ATS y material (usar pro solo en roles críticos)
+  preparador-entrevistas:
+    herramienta: claude
+    modelos:
+      claude: opus
+      cursor: claude-opus-5-5-medium
+      antigravity: pro           # razonamiento profundo y poco frecuente
+  director:                      # /pipeline y /corrida-diaria dentro de una sesión
+    herramienta: claude
+    modelos:
+      claude: sonnet
+      cursor: auto
+      antigravity: inherit       # sesión principal = orquestador que delega en subagentes
+
+comandos:                        # comando → rol que lo ejecuta
+  buscar: buscador-ofertas
+  analizar: buscador-ofertas
+  adaptar-cv: adaptador-cv
+  entrevista: preparador-entrevistas
+  tracker: perfil-tracker
+  corrida-diaria: director
+  pipeline: director

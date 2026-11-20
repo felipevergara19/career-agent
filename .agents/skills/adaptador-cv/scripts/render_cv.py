@@ -267,6 +267,8 @@ def main():
     cmd = [
         chrome_bin,
         "--headless",
+        "--no-sandbox",
+        "--disable-dev-shm-usage",
         "--disable-gpu",
         "--no-pdf-header-footer",
         f"--print-to-pdf={target_pdf}",

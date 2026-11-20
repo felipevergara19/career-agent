@@ -1,0 +1,1329 @@
+<!DOCTYPE html>
+<html lang="es" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Career Agent — Command Center</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
+            mono: ['JetBrains Mono', 'ui-monospace', 'monospace'],
+          },
+          colors: {
+            canvas: '#09090B',
+            surface: '#111114',
+            elevated: '#18181B',
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    :root {
+      --border-subtle: rgba(255, 255, 255, 0.08);
+      --border-hover: rgba(255, 255, 255, 0.16);
+    }
+    body { background: #09090B; color: #FAFAFA; font-feature-settings: "cv02","cv03","cv04","cv11"; }
+    .hairline { border: 1px solid var(--border-subtle); }
+    .hairline-b { border-bottom: 1px solid var(--border-subtle); }
+    .hairline-r { border-right: 1px solid var(--border-subtle); }
+    .hairline-l { border-left: 1px solid var(--border-subtle); }
+    .hairline-t { border-top: 1px solid var(--border-subtle); }
+    .tabular { font-variant-numeric: tabular-nums; }
+    .card-surface {
+      background: #111114;
+      border: 1px solid var(--border-subtle);
+      transition: border-color 150ms cubic-bezier(0.16, 1, 0.3, 1), transform 150ms ease, background-color 150ms ease;
+    }
+    .card-surface:hover { border-color: var(--border-hover); background: #141418; }
+    .drop-active { border-color: rgba(99, 102, 241, 0.75) !important; background: rgba(99, 102, 241, 0.06) !important; }
+    .drop-danger { border-color: rgba(244, 63, 94, 0.85) !important; background: rgba(244, 63, 94, 0.14) !important; color: #FDA4AF !important; }
+    .card-dragging { opacity: 0.4; transform: scale(0.97); }
+    .nav-item { transition: background-color 140ms ease, color 140ms ease; }
+    .nav-active { background: rgba(99, 102, 241, 0.14); color: #FAFAFA; border: 1px solid rgba(99, 102, 241, 0.35); }
+    .nav-idle { color: #A1A1AA; border: 1px solid transparent; }
+    .nav-idle:hover { background: #18181B; color: #FAFAFA; }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 999px; }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.22); }
+  </style>
+</head>
+<body class="bg-canvas text-zinc-100 min-h-screen flex antialiased selection:bg-indigo-500/30">
+
+  <!-- Sidebar Navegación (Linear / Vercel style) -->
+  <aside class="w-[240px] shrink-0 bg-surface hairline-r hidden md:flex flex-col justify-between sticky top-0 h-screen">
+    <div>
+      <!-- Brand -->
+      <div class="px-4 h-14 flex items-center gap-2.5 hairline-b">
+        <div class="w-7 h-7 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow-inner">
+          <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+        </div>
+        <div class="leading-tight">
+          <div class="text-sm font-semibold tracking-tight text-zinc-50">Career Agent</div>
+          <div class="text-[10px] font-mono text-zinc-500">Command Center v2</div>
+        </div>
+      </div>
+
+      <!-- Nav links -->
+      <nav class="p-3 space-y-1">
+        <div class="px-2.5 pb-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Operación</div>
+
+        <button onclick="showView('kanban')" id="nav-kanban" class="nav-item nav-active w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs font-medium">
+          <span class="flex items-center gap-2.5">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><rect x="3" y="3" width="5" height="18" rx="1"/><rect x="10" y="3" width="5" height="12" rx="1"/><rect x="17" y="3" width="4" height="15" rx="1"/></svg>
+            Tablero Kanban
+          </span>
+          <span id="nav-count-activas" class="font-mono text-[10px] px-1.5 py-0.5 rounded bg-zinc-800/90 text-zinc-300 tabular">-</span>
+        </button>
+
+        <button onclick="showView('buscar')" id="nav-buscar" class="nav-item nav-idle w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs font-medium">
+          <span class="flex items-center gap-2.5">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path stroke-linecap="round" d="m20 20-3.5-3.5"/></svg>
+            Buscar y Analizar
+          </span>
+          <span id="nav-pipe-dot" class="hidden w-2 h-2 rounded-full bg-indigo-400 animate-pulse"></span>
+        </button>
+
+        <button onclick="showView('radar')" id="nav-radar" class="nav-item nav-idle w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs font-medium">
+          <span class="flex items-center gap-2.5">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><circle cx="12" cy="5" r="2.5"/><circle cx="5" cy="18" r="2.5"/><circle cx="19" cy="18" r="2.5"/><path d="M10.8 7.2 6.2 15.8m7-8.6 4.6 8.6M7.5 18h9"/></svg>
+            Radar Neo4j
+          </span>
+          <span class="font-mono text-[10px] text-violet-400">GraphRAG</span>
+        </button>
+
+        <button onclick="showView('archivo')" id="nav-archivo" class="nav-item nav-idle w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs font-medium">
+          <span class="flex items-center gap-2.5">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M20 7l-1 12a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2L4 7m16 0H4m16 0-1-3H5L4 7m6 4h4"/></svg>
+            Rechazados / Archivo
+          </span>
+          <span id="nav-count-archivo" class="font-mono text-[10px] px-1.5 py-0.5 rounded bg-zinc-800/90 text-zinc-400 tabular">-</span>
+        </button>
+
+        <div class="px-2.5 pt-4 pb-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Sistema</div>
+
+        <button onclick="showView('config')" id="nav-config" class="nav-item nav-idle w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs font-medium">
+          <span class="flex items-center gap-2.5">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 7a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm-3 3v11m0-4h4m-4-3h3"/></svg>
+            API Keys &amp; IA
+          </span>
+          <span id="nav-ia-warn" class="hidden w-2 h-2 rounded-full bg-amber-400" title="Sin API key configurada"></span>
+        </button>
+
+        <button onclick="showView('guia')" id="nav-guia" class="nav-item nav-idle w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs font-medium">
+          <span class="flex items-center gap-2.5">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path stroke-linecap="round" d="M12 16v-4m0-4h.01"/></svg>
+            Cómo Funciona
+          </span>
+        </button>
+      </nav>
+    </div>
+
+    <!-- Footer Estado Servicios -->
+    <div class="p-3 hairline-t space-y-2">
+      <div class="text-[10px] font-semibold uppercase tracking-wider text-zinc-500 px-1">Infraestructura</div>
+      <div class="bg-canvas hairline rounded-lg p-2.5 space-y-1.5 text-[11px]">
+        <div class="flex items-center justify-between">
+          <span class="text-zinc-400">PostgreSQL</span>
+          <span id="st-pg" class="flex items-center gap-1.5 font-mono text-zinc-400"><span class="w-1.5 h-1.5 rounded-full bg-zinc-600"></span>...</span>
+        </div>
+        <div class="flex items-center justify-between">
+          <span class="text-zinc-400">Neo4j Graph</span>
+          <span id="st-neo" class="flex items-center gap-1.5 font-mono text-zinc-400"><span class="w-1.5 h-1.5 rounded-full bg-zinc-600"></span>...</span>
+        </div>
+        <button onclick="showView('config')" class="w-full flex items-center justify-between pt-1 hairline-t text-left hover:text-white">
+          <span class="text-zinc-400">Motor IA</span>
+          <span id="st-ia" class="flex items-center gap-1.5 font-mono text-zinc-400 truncate max-w-[120px]"><span class="w-1.5 h-1.5 rounded-full bg-zinc-600"></span>...</span>
+        </button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main Viewport -->
+  <div class="flex-1 flex flex-col min-w-0">
+    <!-- Mobile Nav -->
+    <div class="md:hidden flex items-center justify-between px-4 h-12 bg-surface hairline-b sticky top-0 z-30">
+      <span class="text-sm font-semibold">Career Agent</span>
+      <div class="flex gap-1.5 text-xs">
+        <button onclick="showView('kanban')" class="px-2 py-1 rounded bg-elevated">Kanban</button>
+        <button onclick="showView('buscar')" class="px-2 py-1 rounded bg-elevated">Buscar</button>
+        <button onclick="showView('radar')" class="px-2 py-1 rounded bg-elevated">Radar</button>
+        <button onclick="showView('archivo')" class="px-2 py-1 rounded bg-elevated">Archivo</button>
+        <button onclick="showView('config')" class="px-2 py-1 rounded bg-elevated">IA</button>
+        <button onclick="showView('guia')" class="px-2 py-1 rounded bg-elevated">Guía</button>
+      </div>
+    </div>
+
+    <!-- Banner contextual si no hay API key -->
+    <div id="ia-setup-banner" class="hidden bg-indigo-950/50 hairline-b px-6 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs">
+      <div class="flex items-center gap-2 text-indigo-200">
+        <span class="w-2 h-2 rounded-full bg-amber-400"></span>
+        <span><strong>Modo Heurístico activo:</strong> todavía no has configurado una API Key de IA. Agrega una <strong>Gemini API Key (gratuita)</strong> para activar evaluación real con tu rúbrica + GraphRAG.</span>
+      </div>
+      <button onclick="showView('config')" class="px-3 py-1 rounded-md bg-indigo-500 hover:bg-indigo-400 text-white font-medium">
+        Configurar API Key →
+      </button>
+    </div>
+
+    <!-- ======================== VISTA 1: KANBAN ======================== -->
+    <section id="view-kanban" class="p-6 max-w-[1520px] w-full mx-auto space-y-5">
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 class="text-xl font-semibold tracking-tight text-zinc-50">Tablero de Postulaciones</h1>
+          <p class="text-xs text-zinc-400 mt-0.5">Arrastra tarjetas entre columnas para actualizar el estado. Haz clic en una oferta para ver desglose, GraphRAG y CV PDF.</p>
+        </div>
+        <div class="flex items-center gap-2">
+          <button onclick="syncAll()" class="px-3 py-1.5 text-xs font-medium rounded-lg bg-elevated hover:bg-zinc-800 hairline text-zinc-200">
+            Sincronizar DB
+          </button>
+          <button onclick="showView('buscar')" class="px-3.5 py-1.5 text-xs font-medium rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white">
+            + Buscar / Analizar URL
+          </button>
+        </div>
+      </div>
+
+      <!-- Bento KPIs + Filtros -->
+      <div class="flex flex-wrap items-center gap-3">
+        <div class="flex items-center gap-2 bg-surface hairline rounded-lg px-3 py-1.5 text-xs tabular">
+          <span class="text-zinc-500">Activas</span><strong id="kpi-total" class="font-mono text-zinc-100">-</strong>
+          <span class="text-zinc-700">|</span>
+          <span class="text-zinc-500">Alta</span><strong id="kpi-alta" class="font-mono text-emerald-400">-</strong>
+          <span class="text-zinc-700">|</span>
+          <span class="text-zinc-500">CV Listo</span><strong id="kpi-cv" class="font-mono text-indigo-400">-</strong>
+          <span class="text-zinc-700">|</span>
+          <span class="text-zinc-500">Postulado</span><strong id="kpi-post" class="font-mono text-amber-400">-</strong>
+        </div>
+
+        <div class="relative flex-1 min-w-[220px] max-w-xs">
+          <svg class="w-3.5 h-3.5 text-zinc-500 absolute left-3 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path stroke-linecap="round" d="m20 20-3.5-3.5"/></svg>
+          <input id="search" oninput="renderBoard()" type="text" placeholder="Buscar empresa, rol o skill... ( / )"
+                 class="w-full bg-surface hairline rounded-lg pl-8 pr-3 py-1.5 text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-indigo-500" />
+        </div>
+
+        <select id="filter-prio" onchange="renderBoard()" class="bg-surface hairline rounded-lg px-2.5 py-1.5 text-xs text-zinc-300 focus:outline-none focus:border-indigo-500">
+          <option value="">Todas las prioridades</option>
+          <option value="alta">Alta (≥80)</option>
+          <option value="media">Media (65–79)</option>
+          <option value="stretch">Stretch</option>
+        </select>
+
+        <select id="filter-angulo" onchange="renderBoard()" class="bg-surface hairline rounded-lg px-2.5 py-1.5 text-xs text-zinc-300 focus:outline-none focus:border-indigo-500">
+          <option value="">Todos los ángulos</option>
+          <option value="finops">FinOps</option>
+          <option value="devsecops">DevSecOps</option>
+          <option value="secops-siem">SecOps / SIEM</option>
+          <option value="ai-automation">AI Automation</option>
+        </select>
+
+        <div class="ml-auto flex items-center gap-2">
+          <div id="reject-zone"
+               ondragover="onDragOver(event, true)"
+               ondragleave="onDragLeave(event)"
+               ondrop="onDrop(event, 'rechazada')"
+               class="border border-dashed border-amber-800/70 bg-amber-950/20 text-amber-300 rounded-lg px-3 py-1.5 text-xs font-medium flex items-center gap-1.5 transition">
+            Rechazada (empresa)
+          </div>
+          <div id="trash-zone"
+               ondragover="onDragOver(event, true)"
+               ondragleave="onDragLeave(event)"
+               ondrop="onDrop(event, 'descartada')"
+               class="border border-dashed border-rose-900/70 bg-rose-950/20 text-rose-400 rounded-lg px-3 py-1.5 text-xs font-medium flex items-center gap-1.5 transition">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 6h18m-2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+            Descartar
+          </div>
+        </div>
+      </div>
+
+      <!-- Columnas Kanban -->
+      <div id="board" class="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-5 gap-3.5"></div>
+    </section>
+
+    <!-- ======================== VISTA 2: BUSCAR Y ANALIZAR ======================== -->
+    <section id="view-buscar" class="hidden p-6 max-w-[1280px] w-full mx-auto space-y-6">
+      <div>
+        <h1 class="text-xl font-semibold tracking-tight text-zinc-50">Buscar y Analizar Ofertas</h1>
+        <p class="text-xs text-zinc-400 mt-0.5">Filtra vacantes 100% remotas elegibles desde Chile/LatAm y evalúalas contra tu rúbrica + logros en Neo4j.</p>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <!-- Card Analizar URL -->
+        <div class="bg-surface hairline rounded-xl p-5 space-y-4">
+          <div class="flex items-center gap-2.5">
+            <div class="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13.828 10.172a4 4 0 0 0-5.656 0l-4 4a4 4 0 1 0 5.656 5.656l1.102-1.101m-.758-4.899a4 4 0 0 0 5.656 0l4-4a4 4 0 0 0-5.656-5.656l-1.1 1.1"/></svg>
+            </div>
+            <div>
+              <h2 class="text-sm font-semibold">Analizar URL puntual</h2>
+              <p class="text-xs text-zinc-400">Pega cualquier vacante de Get on Board, Greenhouse, Ashby, Lever o Careers.</p>
+            </div>
+          </div>
+
+          <div class="flex gap-2">
+            <input id="url-input" type="url" placeholder="https://jobs.ashbyhq.com/..."
+                   class="flex-1 bg-canvas hairline rounded-lg px-3 py-2 text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-indigo-500" />
+            <button onclick="analizarUrl()" id="btn-url" class="px-4 py-2 text-xs font-medium rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white shrink-0">
+              Evaluar IA
+            </button>
+          </div>
+
+          <div id="url-result" class="hidden bg-canvas hairline rounded-lg p-3.5 space-y-2 text-xs"></div>
+        </div>
+
+        <!-- Card Rastreo Multi-Fuente -->
+        <div class="bg-surface hairline rounded-xl p-5 space-y-4">
+          <div class="flex items-center gap-2.5">
+            <div class="w-8 h-8 rounded-lg bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21 12a9 9 0 0 1-9 9m9-9a9 9 0 0 0-9-9m9 9H3m9 9a9 9 0 0 1-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9"/></svg>
+            </div>
+            <div>
+              <h2 class="text-sm font-semibold">Rastreo Multi-Fuente Automático</h2>
+              <p class="text-xs text-zinc-400">Consulta 12 fuentes (ATS Chile/LatAm/FinOps + portales remotos), aplica filtros duros y puntúa con IA.</p>
+            </div>
+          </div>
+
+          <div class="flex flex-wrap gap-1.5 text-[10px] font-mono text-zinc-400">
+            <span class="px-2 py-0.5 rounded bg-canvas hairline text-emerald-400">Get on Board (CL)</span>
+            <span class="px-2 py-0.5 rounded bg-canvas hairline text-emerald-400">Teamtailor (CL)</span>
+            <span class="px-2 py-0.5 rounded bg-canvas hairline text-violet-300">Ashby (FinOps)</span>
+            <span class="px-2 py-0.5 rounded bg-canvas hairline">Greenhouse</span>
+            <span class="px-2 py-0.5 rounded bg-canvas hairline">Lever (CL/LatAm)</span>
+            <span class="px-2 py-0.5 rounded bg-canvas hairline">Breezy</span>
+            <span class="px-2 py-0.5 rounded bg-canvas hairline">SmartRecruiters</span>
+            <span class="px-2 py-0.5 rounded bg-canvas hairline">WeWorkRemotely</span>
+            <span class="px-2 py-0.5 rounded bg-canvas hairline">Jobicy</span>
+            <span class="px-2 py-0.5 rounded bg-canvas hairline">RemoteOK</span>
+            <span class="px-2 py-0.5 rounded bg-canvas hairline">Remotive</span>
+            <span class="px-2 py-0.5 rounded bg-canvas hairline">Himalayas</span>
+          </div>
+
+          <div class="grid grid-cols-2 gap-2.5">
+            <div>
+              <label class="block text-[11px] text-zinc-400 mb-1">Foco técnico</label>
+              <select id="pipe-foco" class="w-full bg-canvas hairline rounded-lg px-2.5 py-2 text-xs text-zinc-200">
+                <option value="">Todos los ángulos</option>
+                <option value="finops">FinOps / AWS Cost</option>
+                <option value="devsecops">DevSecOps / AWS</option>
+                <option value="secops-siem">SecOps / IAM / SIEM</option>
+                <option value="ai-automation">AI Automation</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-[11px] text-zinc-400 mb-1">Tope a evaluar con IA</label>
+              <select id="pipe-max" class="w-full bg-canvas hairline rounded-lg px-2.5 py-2 text-xs text-zinc-200">
+                <option value="5">5 ofertas nuevas (rápido)</option>
+                <option value="12" selected>12 ofertas nuevas</option>
+                <option value="25">25 ofertas nuevas</option>
+              </select>
+            </div>
+          </div>
+
+          <button onclick="runPipeline()" id="btn-pipe" class="w-full py-2 text-xs font-semibold rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white">
+            ▶ Lanzar Rastreo + Evaluación IA
+          </button>
+        </div>
+      </div>
+
+      <!-- Consola Streaming -->
+      <div class="bg-surface hairline rounded-xl overflow-hidden">
+        <div class="px-4 py-2.5 hairline-b flex items-center justify-between">
+          <div class="flex items-center gap-2 text-xs font-medium text-zinc-300">
+            <span id="console-dot" class="w-2 h-2 rounded-full bg-zinc-600"></span>
+            Registro de ejecución en vivo
+          </div>
+          <span id="console-state" class="text-[11px] font-mono text-zinc-500">Inactivo</span>
+        </div>
+        <pre id="console-out" class="p-4 bg-canvas text-xs font-mono text-zinc-300 max-h-80 overflow-y-auto whitespace-pre-wrap leading-relaxed">Esperando ejecución. Haz clic en "Lanzar Rastreo + Evaluación IA" para comenzar.</pre>
+      </div>
+    </section>
+
+    <!-- ======================== VISTA 3: RADAR NEO4J ======================== -->
+    <section id="view-radar" class="hidden p-6 max-w-[1280px] w-full mx-auto space-y-6">
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 class="text-xl font-semibold tracking-tight text-zinc-50">Radar de Carrera — Neo4j GraphRAG</h1>
+          <p class="text-xs text-zinc-400 mt-0.5">Relación en vivo entre tus logros verificados, los skills que dominas y lo que demanda el mercado.</p>
+        </div>
+        <div class="flex gap-2">
+          <button onclick="syncAll()" class="px-3 py-1.5 text-xs font-medium rounded-lg bg-elevated hover:bg-zinc-800 hairline">Re-sincronizar Grafo</button>
+          <a href="http://localhost:7474" target="_blank" class="px-3.5 py-1.5 text-xs font-medium rounded-lg bg-violet-600 hover:bg-violet-500 text-white">Abrir Neo4j Browser ↗</a>
+        </div>
+      </div>
+
+      <!-- Bento Stats -->
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-3.5">
+        <div class="bg-surface hairline rounded-xl p-4"><div class="text-[11px] text-zinc-400">Nodos en Grafo</div><div id="g-nodos" class="text-2xl font-mono font-semibold text-zinc-50 mt-1 tabular">-</div></div>
+        <div class="bg-surface hairline rounded-xl p-4"><div class="text-[11px] text-zinc-400">Conexiones</div><div id="g-aristas" class="text-2xl font-mono font-semibold text-violet-400 mt-1 tabular">-</div></div>
+        <div class="bg-surface hairline rounded-xl p-4"><div class="text-[11px] text-zinc-400">Fuente Activa</div><div id="g-source" class="text-lg font-mono font-semibold text-emerald-400 mt-2 uppercase">-</div></div>
+        <div class="bg-surface hairline rounded-xl p-4"><div class="text-[11px] text-zinc-400">Uso en IA</div><div class="text-xs text-zinc-300 mt-2">Inyecta top 5 logros por oferta</div></div>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="bg-surface hairline rounded-xl p-5 space-y-3">
+          <h2 class="text-sm font-semibold text-emerald-400">Fortalezas cubiertas por tus logros</h2>
+          <p class="text-xs text-zinc-400">Skills que piden las ofertas y que ya tienen respaldo verificado en tu Impact Log.</p>
+          <div id="radar-cubiertos" class="flex flex-wrap gap-2 pt-1"></div>
+        </div>
+        <div class="bg-surface hairline rounded-xl p-5 space-y-3">
+          <h2 class="text-sm font-semibold text-rose-400">Brechas prioritarias de mercado</h2>
+          <p class="text-xs text-zinc-400">Skills muy pedidos por las ofertas donde aún no tienes un logro vinculado en el grafo.</p>
+          <div id="radar-brechas" class="flex flex-wrap gap-2 pt-1"></div>
+        </div>
+      </div>
+
+      <!-- Consultas Cypher listas para copiar -->
+      <div class="bg-surface hairline rounded-xl p-5 space-y-3">
+        <h2 class="text-sm font-semibold">Consultas útiles para explorar en Neo4j Browser (<span class="font-mono text-violet-400">localhost:7474</span>)</h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs font-mono">
+          <div class="bg-canvas hairline rounded-lg p-3 space-y-1.5">
+            <div class="flex justify-between text-[11px] text-zinc-400 font-sans">
+              <span>Ver tu perfil, logros y skills conectados</span>
+              <button onclick="copyText('MATCH p=(:Perfil)-[]->(:Logro)-[:DEMUESTRA_SKILL]->(:Skill) RETURN p LIMIT 60')" class="text-indigo-400 hover:underline">Copiar</button>
+            </div>
+            <code class="text-violet-300 block">MATCH p=(:Perfil)-[]->(:Logro)-[:DEMUESTRA_SKILL]->(:Skill) RETURN p LIMIT 60</code>
+          </div>
+          <div class="bg-canvas hairline rounded-lg p-3 space-y-1.5">
+            <div class="flex justify-between text-[11px] text-zinc-400 font-sans">
+              <span>Top skills que faltan en tus logros</span>
+              <button onclick="copyText('MATCH (o:Oferta)-[:REQUIERE_SKILL]->(s:Skill) WHERE NOT (:Logro)-[:DEMUESTRA_SKILL]->(s) RETURN s.nombre, count(DISTINCT o) AS ofertas ORDER BY ofertas DESC LIMIT 15')" class="text-indigo-400 hover:underline">Copiar</button>
+            </div>
+            <code class="text-rose-300 block">MATCH (o:Oferta)-[:REQUIERE_SKILL]->(s:Skill) WHERE NOT (:Logro)-[:DEMUESTRA_SKILL]->(s) RETURN s.nombre, count(DISTINCT o) AS ofertas ORDER BY ofertas DESC LIMIT 15</code>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ======================== VISTA 3B: HISTORIAL RECHAZADOS / DESCARTADOS ======================== -->
+    <section id="view-archivo" class="hidden p-6 max-w-[1360px] w-full mx-auto space-y-5">
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 class="text-xl font-semibold tracking-tight text-zinc-50">Historial de Rechazados y Descartados</h1>
+          <p class="text-xs text-zinc-400 mt-0.5">Se preserva todo tu historial para analítica de mercado, motivos de descarte y evitar repostular a lo mismo. Puedes restaurar cualquier oferta en 1 clic.</p>
+        </div>
+        <div class="flex items-center gap-2 text-xs font-mono tabular">
+          <span class="px-2.5 py-1 rounded-lg bg-surface hairline text-zinc-300">Total: <strong id="arch-total">0</strong></span>
+          <span class="px-2.5 py-1 rounded-lg bg-amber-950/40 border border-amber-800/50 text-amber-300">Rechazadas: <strong id="arch-rech">0</strong></span>
+          <span class="px-2.5 py-1 rounded-lg bg-rose-950/40 border border-rose-800/50 text-rose-300">Descartadas: <strong id="arch-desc">0</strong></span>
+        </div>
+      </div>
+
+      <div class="flex flex-wrap items-center gap-2.5">
+        <input id="arch-search" oninput="renderArchivo()" type="text" placeholder="Buscar por empresa, rol o motivo..."
+               class="bg-surface hairline rounded-lg px-3 py-1.5 text-xs text-zinc-100 placeholder-zinc-500 w-72 focus:outline-none focus:border-indigo-500" />
+        <select id="arch-filter" onchange="renderArchivo()" class="bg-surface hairline rounded-lg px-2.5 py-1.5 text-xs text-zinc-200">
+          <option value="">Todas (Rechazadas + Descartadas)</option>
+          <option value="rechazada">Solo Rechazadas (por la empresa)</option>
+          <option value="descartada">Solo Descartadas (por nosotros / filtro)</option>
+        </select>
+      </div>
+
+      <div class="bg-surface hairline rounded-xl overflow-x-auto">
+        <table class="w-full text-left text-xs">
+          <thead class="hairline-b text-[11px] uppercase tracking-wider text-zinc-500 bg-canvas/60">
+            <tr>
+              <th class="px-4 py-3">Empresa / Cargo</th>
+              <th class="px-4 py-3">Estado</th>
+              <th class="px-4 py-3">Score</th>
+              <th class="px-4 py-3">Fecha</th>
+              <th class="px-4 py-3">Motivo registrado</th>
+              <th class="px-4 py-3 text-right">Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="arch-tbody" class="divide-y divide-white/[0.06]"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ======================== VISTA 4: CONFIGURACIÓN & API KEYS ======================== -->
+    <section id="view-config" class="hidden p-6 max-w-[960px] w-full mx-auto space-y-6">
+      <div>
+        <h1 class="text-xl font-semibold tracking-tight text-zinc-50">Configuración de IA y API Keys</h1>
+        <p class="text-xs text-zinc-400 mt-0.5">Conecta tu proveedor preferido. Las llaves se guardan solo localmente en <code class="font-mono text-zinc-300">postulaciones/.ai-config.json</code> (ignorado por Git, permisos <code class="font-mono">600</code>) y aplican al instante sin reiniciar Docker.</p>
+      </div>
+
+      <!-- Estado activo -->
+      <div class="bg-surface hairline rounded-xl p-4 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <div class="text-[11px] text-zinc-400">Proveedor activo actualmente</div>
+          <div id="cfg-active-label" class="text-sm font-mono font-semibold text-zinc-100 mt-0.5">Cargando...</div>
+        </div>
+        <button onclick="testIA()" id="btn-test-ia" class="px-4 py-2 text-xs font-semibold rounded-lg bg-elevated hover:bg-zinc-800 hairline text-zinc-100">
+          ⚡ Probar Conexión IA
+        </button>
+      </div>
+
+      <div id="cfg-test-result" class="hidden rounded-xl p-3.5 text-xs font-mono"></div>
+
+      <!-- Formulario de llaves y matriz multi-agente -->
+      <form onsubmit="saveConfigIA(event)" class="space-y-4">
+        <!-- Matriz Multi-Agente por Rol (Ahorro de Tokens) -->
+        <div class="bg-surface hairline rounded-xl p-5 space-y-4 border-t-2 border-t-indigo-500">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h2 class="text-sm font-semibold text-zinc-50">Matriz Multi-Agente por Rol (Ahorro de Tokens)</h2>
+              <p class="text-xs text-zinc-400 mt-0.5">Asigna un proveedor y modelo específico a cada agente interno según complejidad. Si lo dejas en "Heredar global", usará el proveedor por defecto.</p>
+            </div>
+            <button type="button" onclick="aplicarPresetAhorro()" class="px-3 py-1.5 text-[11px] font-medium rounded-lg bg-violet-600/20 hover:bg-violet-600/30 border border-violet-500/40 text-violet-200">
+              ✨ Preset Ahorro Máximo (OpenRouter)
+            </button>
+          </div>
+          <div id="roles-matrix" class="space-y-2.5"></div>
+        </div>
+
+        <div class="bg-surface hairline rounded-xl p-5 space-y-4">
+          <div class="flex items-center justify-between">
+            <div>
+              <h2 class="text-sm font-semibold">Proveedor Preferido</h2>
+              <p class="text-xs text-zinc-400">Deja "Automático" para usar la primera llave configurada, o fija uno explícitamente.</p>
+            </div>
+            <select id="cfg-provider" class="bg-canvas hairline rounded-lg px-3 py-1.5 text-xs text-zinc-200">
+              <option value="">Automático (recomendado)</option>
+              <option value="openrouter">OpenRouter (Multi-modelo)</option>
+              <option value="gemini">Google Gemini</option>
+              <option value="anthropic">Anthropic Claude</option>
+              <option value="openai">OpenAI GPT</option>
+              <option value="ollama">Ollama Local</option>
+              <option value="agy">Antigravity CLI (agy en host)</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- OpenRouter -->
+        <div class="bg-surface hairline rounded-xl p-5 space-y-3 border-l-2 border-l-violet-500">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <div class="flex items-center gap-2">
+                <h3 class="text-sm font-semibold">OpenRouter API</h3>
+                <span class="text-[10px] px-2 py-0.5 rounded-full bg-violet-500/15 text-violet-300 border border-violet-500/30 font-medium">Multi-modelo · Soporta :free</span>
+              </div>
+              <p class="text-xs text-zinc-400 mt-0.5">Usa tu key <code class="font-mono text-zinc-300">sk-or-v1-...</code> para acceder a Gemini, Claude, DeepSeek o modelos gratuitos (<code class="font-mono text-zinc-300">openrouter/free</code>).</p>
+            </div>
+            <a href="https://openrouter.ai/models" target="_blank" class="text-xs text-violet-400 hover:underline">Ver catálogo de modelos ↗</a>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div class="md:col-span-2">
+              <label class="block text-[11px] text-zinc-400 mb-1">OPENROUTER_API_KEY</label>
+              <input id="cfg-openrouter-key" type="password" placeholder="sk-or-v1-..." class="w-full bg-canvas hairline rounded-lg px-3 py-2 text-xs font-mono text-zinc-100 focus:outline-none focus:border-violet-500" />
+            </div>
+            <div>
+              <label class="block text-[11px] text-zinc-400 mb-1">Modelo (elige o escribe ID)</label>
+              <input id="cfg-openrouter-model" list="openrouter-presets" type="text" placeholder="openrouter/free" class="w-full bg-canvas hairline rounded-lg px-3 py-2 text-xs font-mono text-zinc-200 focus:outline-none focus:border-violet-500" />
+              <datalist id="openrouter-presets">
+                <option value="openrouter/free">Gratis automático (openrouter/free)</option>
+                <option value="google/gemini-2.5-flash">Google Gemini 2.5 Flash</option>
+                <option value="google/gemini-2.0-flash-exp:free">Gemini 2.0 Flash (Free)</option>
+                <option value="meta-llama/llama-3.3-70b-instruct:free">Llama 3.3 70B (Free)</option>
+                <option value="deepseek/deepseek-chat-v3-0324">DeepSeek V3</option>
+                <option value="anthropic/claude-sonnet-4">Claude Sonnet 4</option>
+                <option value="openai/gpt-4o-mini">OpenAI GPT-4o mini</option>
+              </datalist>
+            </div>
+          </div>
+        </div>
+
+        <!-- Google Gemini -->
+        <div class="bg-surface hairline rounded-xl p-5 space-y-3 border-l-2 border-l-indigo-500">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <div class="flex items-center gap-2">
+                <h3 class="text-sm font-semibold">Google Gemini API</h3>
+                <span class="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-medium">Recomendado · Capa Gratuita</span>
+              </div>
+              <p class="text-xs text-zinc-400 mt-0.5">Ideal para Docker y CI/CD. Genera tu llave en 10 segundos en Google AI Studio.</p>
+            </div>
+            <a href="https://aistudio.google.com/apikey" target="_blank" class="text-xs text-indigo-400 hover:underline">Obtener GEMINI_API_KEY ↗</a>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div class="md:col-span-2">
+              <label class="block text-[11px] text-zinc-400 mb-1">GEMINI_API_KEY</label>
+              <input id="cfg-gemini-key" type="password" placeholder="AIzaSy..." class="w-full bg-canvas hairline rounded-lg px-3 py-2 text-xs font-mono text-zinc-100 focus:outline-none focus:border-indigo-500" />
+            </div>
+            <div>
+              <label class="block text-[11px] text-zinc-400 mb-1">Modelo</label>
+              <select id="cfg-gemini-model" class="w-full bg-canvas hairline rounded-lg px-3 py-2 text-xs font-mono text-zinc-200">
+                <option value="gemini-2.5-flash">gemini-2.5-flash</option>
+                <option value="gemini-2.5-pro">gemini-2.5-pro</option>
+                <option value="gemini-2.0-flash">gemini-2.0-flash</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Anthropic & OpenAI & Ollama -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div class="bg-surface hairline rounded-xl p-5 space-y-3">
+            <h3 class="text-sm font-semibold">Anthropic Claude</h3>
+            <div>
+              <label class="block text-[11px] text-zinc-400 mb-1">ANTHROPIC_API_KEY</label>
+              <input id="cfg-anthropic-key" type="password" placeholder="sk-ant-..." class="w-full bg-canvas hairline rounded-lg px-3 py-2 text-xs font-mono text-zinc-100 focus:outline-none focus:border-indigo-500" />
+            </div>
+            <div>
+              <label class="block text-[11px] text-zinc-400 mb-1">Modelo</label>
+              <input id="cfg-anthropic-model" type="text" placeholder="claude-sonnet-4-5" class="w-full bg-canvas hairline rounded-lg px-3 py-2 text-xs font-mono text-zinc-200" />
+            </div>
+          </div>
+
+          <div class="bg-surface hairline rounded-xl p-5 space-y-3">
+            <h3 class="text-sm font-semibold">OpenAI</h3>
+            <div>
+              <label class="block text-[11px] text-zinc-400 mb-1">OPENAI_API_KEY</label>
+              <input id="cfg-openai-key" type="password" placeholder="sk-..." class="w-full bg-canvas hairline rounded-lg px-3 py-2 text-xs font-mono text-zinc-100 focus:outline-none focus:border-indigo-500" />
+            </div>
+            <div>
+              <label class="block text-[11px] text-zinc-400 mb-1">Modelo</label>
+              <input id="cfg-openai-model" type="text" placeholder="gpt-4o-mini" class="w-full bg-canvas hairline rounded-lg px-3 py-2 text-xs font-mono text-zinc-200" />
+            </div>
+          </div>
+        </div>
+
+        <!-- Ollama Local -->
+        <div class="bg-surface hairline rounded-xl p-5 space-y-3">
+          <h3 class="text-sm font-semibold">Ollama Local (100% offline, sin API Key)</h3>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div class="md:col-span-2">
+              <label class="block text-[11px] text-zinc-400 mb-1">OLLAMA_URL</label>
+              <input id="cfg-ollama-url" type="text" placeholder="http://host.docker.internal:11434" class="w-full bg-canvas hairline rounded-lg px-3 py-2 text-xs font-mono text-zinc-200" />
+            </div>
+            <div>
+              <label class="block text-[11px] text-zinc-400 mb-1">Modelo</label>
+              <input id="cfg-ollama-model" type="text" placeholder="qwen2.5:7b" class="w-full bg-canvas hairline rounded-lg px-3 py-2 text-xs font-mono text-zinc-200" />
+            </div>
+          </div>
+        </div>
+
+        <div class="flex justify-end gap-2">
+          <button type="submit" class="px-5 py-2 text-xs font-semibold rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white">
+            Guardar Configuración
+          </button>
+        </div>
+      </form>
+    </section>
+
+    <!-- ======================== VISTA 5: CÓMO FUNCIONA (GUÍA) ======================== -->
+    <section id="view-guia" class="hidden p-6 max-w-[1040px] w-full mx-auto space-y-6">
+      <div>
+        <h1 class="text-xl font-semibold tracking-tight text-zinc-50">Cómo funciona Career Agent</h1>
+        <p class="text-xs text-zinc-400 mt-0.5">Guía rápida para operar el sistema tú mismo o para cualquier persona que clone el repositorio.</p>
+      </div>
+
+      <!-- Checklist interactivo de estado -->
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-3.5">
+        <div class="bg-surface hairline rounded-xl p-4 space-y-2">
+          <div class="flex justify-between items-center"><span class="text-xs font-mono text-zinc-500">01</span><span id="chk-1" class="text-[11px] font-mono">...</span></div>
+          <div class="text-sm font-semibold">Perfil y Rúbrica</div>
+          <p class="text-xs text-zinc-400">Edita <code class="font-mono text-zinc-300">perfil/perfil-maestro.md</code> y <code class="font-mono text-zinc-300">preferencias.md</code> con tus logros y filtros duros.</p>
+        </div>
+        <div class="bg-surface hairline rounded-xl p-4 space-y-2">
+          <div class="flex justify-between items-center"><span class="text-xs font-mono text-zinc-500">02</span><span id="chk-2" class="text-[11px] font-mono">...</span></div>
+          <div class="text-sm font-semibold">Conecta tu IA</div>
+          <p class="text-xs text-zinc-400">Agrega una <code class="font-mono text-zinc-300">GEMINI_API_KEY</code> en la pestaña <strong>API Keys &amp; IA</strong> (o usa <code class="font-mono">agy</code> en consola).</p>
+        </div>
+        <div class="bg-surface hairline rounded-xl p-4 space-y-2">
+          <div class="flex justify-between items-center"><span class="text-xs font-mono text-zinc-500">03</span><span id="chk-3" class="text-[11px] font-mono">...</span></div>
+          <div class="text-sm font-semibold">Busca + GraphRAG</div>
+          <p class="text-xs text-zinc-400">El motor raspa 7 fuentes, descarta no-remotas/US-only y puntúa usando tus logros en <strong>Neo4j</strong>.</p>
+        </div>
+        <div class="bg-surface hairline rounded-xl p-4 space-y-2">
+          <div class="flex justify-between items-center"><span class="text-xs font-mono text-zinc-500">04</span><span class="text-[11px] font-mono text-indigo-400">LISTO</span></div>
+          <div class="text-sm font-semibold">Arrastra y Postula</div>
+          <p class="text-xs text-zinc-400">Arrastra una oferta a <strong>CV Listo</strong> para ensamblar el PDF automáticamente, revisa y postula.</p>
+        </div>
+      </div>
+
+      <!-- Arquitectura visual -->
+      <div class="bg-surface hairline rounded-xl p-5 space-y-4">
+        <h2 class="text-sm font-semibold">Qué hace cada pieza en Docker</h2>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+          <div class="bg-canvas hairline rounded-lg p-4 space-y-1.5">
+            <div class="font-semibold text-indigo-400">PostgreSQL (Persistencia)</div>
+            <p class="text-zinc-400 leading-relaxed">Guarda tus ofertas, desgloses de puntaje, estados y corridas en un volumen persistente. Al apagar Docker no se pierde nada.</p>
+          </div>
+          <div class="bg-canvas hairline rounded-lg p-4 space-y-1.5">
+            <div class="font-semibold text-violet-400">Neo4j (GraphRAG)</div>
+            <p class="text-zinc-400 leading-relaxed">Conecta <code class="font-mono">(Logro)→(Skill)←(Oferta)</code>. La IA lo consulta antes de evaluar cada vacante para citar tus logros reales y detectar brechas.</p>
+          </div>
+          <div class="bg-canvas hairline rounded-lg p-4 space-y-1.5">
+            <div class="font-semibold text-emerald-400">Bind Mounts Locales</div>
+            <p class="text-zinc-400 leading-relaxed">Tus archivos Markdown y CVs PDF viven directamente en tu carpeta del repo (<code class="font-mono">ofertas/</code>, <code class="font-mono">cvs-generados/</code>), 100% portables a Git y CI/CD.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- Slide-over Detail Drawer -->
+  <div id="drawer-backdrop" onclick="closeDrawer()" class="hidden fixed inset-0 bg-black/70 backdrop-blur-[2px] z-40"></div>
+  <aside id="drawer" class="hidden fixed top-0 right-0 h-full w-full max-w-[600px] bg-surface hairline-l z-50 overflow-y-auto p-6 space-y-5 shadow-2xl">
+    <div class="flex justify-between items-start gap-3 pb-4 hairline-b">
+      <div>
+        <div id="d-empresa" class="text-[11px] font-mono uppercase tracking-wider text-indigo-400"></div>
+        <h2 id="d-cargo" class="text-lg font-semibold text-zinc-50 leading-snug mt-1"></h2>
+        <div id="d-meta" class="text-xs text-zinc-400 mt-1.5"></div>
+      </div>
+      <button onclick="closeDrawer()" class="p-1.5 rounded-lg bg-elevated hover:bg-zinc-800 text-zinc-400 hover:text-white">✕</button>
+    </div>
+
+    <div class="flex flex-wrap items-center gap-2">
+      <span id="d-score" class="text-xs font-mono font-semibold px-2.5 py-1 rounded-md bg-elevated hairline"></span>
+      <span id="d-evalby" class="text-[11px] font-mono text-zinc-500"></span>
+    </div>
+
+    <!-- Acciones rápidas -->
+    <div class="flex flex-wrap items-center gap-2">
+      <a id="d-url" href="#" target="_blank" class="px-3.5 py-1.5 text-xs font-medium rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white">Postular en Portal ↗</a>
+      <button onclick="generarCvDrawer()" class="px-3.5 py-1.5 text-xs font-medium rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white">Generar CV PDF</button>
+      <a id="d-pdf-link" href="#" target="_blank" class="hidden px-3 py-1.5 text-xs font-medium rounded-lg bg-elevated hover:bg-zinc-800 hairline text-emerald-300">Abrir PDF ↗</a>
+      <select id="d-move-select" onchange="moverDesdeDrawer(this.value)" class="bg-canvas hairline rounded-lg px-2.5 py-1.5 text-xs text-zinc-200">
+        <option value="evaluada">Etapa: Evaluada</option>
+        <option value="cv_generado">Etapa: CV Listo</option>
+        <option value="postulado">Etapa: Postulado</option>
+        <option value="entrevista_hr">Etapa: Entrevista HR</option>
+        <option value="entrevista_tecnica">Etapa: Entrevista Técnica</option>
+        <option value="oferta">Etapa: Oferta</option>
+        <option value="rechazada">Etapa: Rechazada (empresa)</option>
+        <option value="descartada">Etapa: Descartada (nosotros)</option>
+      </select>
+      <button onclick="descartarDrawer()" class="ml-auto px-3 py-1.5 text-xs rounded-lg bg-rose-950/60 hover:bg-rose-900/70 border border-rose-800/60 text-rose-300">Descartar</button>
+    </div>
+
+    <!-- Resumen IA -->
+    <div id="d-resumen-box" class="bg-canvas hairline rounded-xl p-3.5 text-xs text-zinc-300 leading-relaxed"></div>
+
+    <!-- Desglose Rúbrica -->
+    <div class="bg-canvas hairline rounded-xl p-4 space-y-2.5">
+      <div class="text-[11px] font-semibold uppercase tracking-wider text-zinc-400">Desglose de Rúbrica (0–100)</div>
+      <div id="d-desglose" class="space-y-2 text-xs"></div>
+    </div>
+
+    <!-- Neo4j GraphRAG -->
+    <div class="space-y-2">
+      <div class="text-[11px] font-semibold uppercase tracking-wider text-violet-400">Logros verificados en Neo4j (GraphRAG)</div>
+      <div id="d-grafo-logros" class="space-y-2 text-xs"></div>
+    </div>
+
+    <!-- Brechas & Keywords -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <div class="bg-canvas hairline rounded-xl p-3.5">
+        <div class="text-[11px] font-semibold uppercase tracking-wider text-amber-400 mb-2">Brechas / Alertas</div>
+        <ul id="d-brechas" class="list-disc pl-4 space-y-1 text-xs text-zinc-300"></ul>
+      </div>
+      <div class="bg-canvas hairline rounded-xl p-3.5">
+        <div class="text-[11px] font-semibold uppercase tracking-wider text-indigo-400 mb-2">Keywords ATS</div>
+        <div id="d-keywords" class="flex flex-wrap gap-1.5"></div>
+      </div>
+    </div>
+
+    <!-- Preview PDF -->
+    <div id="d-pdf-wrap" class="hidden space-y-2">
+      <div class="text-[11px] font-semibold uppercase tracking-wider text-zinc-400">Vista previa del CV PDF</div>
+      <iframe id="d-pdf-frame" class="w-full h-[460px] rounded-xl hairline bg-white"></iframe>
+    </div>
+  </aside>
+
+  <!-- Toast Notification -->
+  <div id="toast" class="hidden fixed bottom-5 right-5 z-50 px-4 py-2.5 rounded-xl bg-elevated hairline text-xs font-medium text-zinc-100 shadow-2xl"></div>
+
+  <script>
+    const COLS = [
+      { key: "evaluada", label: "Evaluada", dot: "bg-zinc-400" },
+      { key: "cv_generado", label: "CV Listo", dot: "bg-indigo-400" },
+      { key: "postulado", label: "Postulado", dot: "bg-amber-400" },
+      { key: "entrevista_hr", label: "Entrevista HR", dot: "bg-violet-400" },
+      { key: "entrevista_tecnica", label: "Técnica / Oferta", dot: "bg-emerald-400" },
+    ];
+    let OFERTAS = [];
+    let SELECTED = null;
+    let DRAGGED_ID = null;
+
+    function toast(msg, type = "info") {
+      const el = document.getElementById("toast");
+      el.textContent = msg;
+      el.className = `fixed bottom-5 right-5 z-50 px-4 py-2.5 rounded-xl text-xs font-medium shadow-2xl border ${
+        type === "ok" ? "bg-emerald-950/95 border-emerald-700/70 text-emerald-200" :
+        type === "err" ? "bg-rose-950/95 border-rose-700/70 text-rose-200" :
+        "bg-elevated border-zinc-700 text-zinc-100"
+      }`;
+      clearTimeout(window._toastTimer);
+      window._toastTimer = setTimeout(() => el.classList.add("hidden"), 3500);
+    }
+
+    function copyText(txt) {
+      navigator.clipboard.writeText(txt);
+      toast("Consulta Cypher copiada al portapapeles", "ok");
+    }
+
+    function showView(name) {
+      for (const v of ["kanban", "buscar", "radar", "archivo", "config", "guia"]) {
+        document.getElementById("view-" + v).classList.toggle("hidden", v !== name);
+        const nav = document.getElementById("nav-" + v);
+        if (nav) {
+          nav.classList.toggle("nav-active", v === name);
+          nav.classList.toggle("nav-idle", v !== name);
+        }
+      }
+      if (name === "config" || name === "guia") loadConfigIA();
+      if (name === "archivo") renderArchivo();
+    }
+
+    async function loadHealth() {
+      const r = await fetch("/api/health").then(x => x.json());
+      const paint = (id, ok, txt) => {
+        document.getElementById(id).innerHTML = `<span class="w-1.5 h-1.5 rounded-full ${ok ? 'bg-emerald-400' : 'bg-amber-400'}"></span><span class="${ok ? 'text-emerald-300' : 'text-amber-300'}">${txt}</span>`;
+      };
+      paint("st-pg", r.postgres, r.postgres ? "ON" : "OFF");
+      paint("st-neo", r.neo4j, r.neo4j ? "ON" : "OFF");
+      const iaOk = r.ia && r.ia.provider !== "heuristica";
+      paint("st-ia", iaOk, iaOk ? r.ia.provider : "Sin Key");
+      document.getElementById("ia-setup-banner").classList.toggle("hidden", iaOk);
+      document.getElementById("nav-ia-warn").classList.toggle("hidden", iaOk);
+
+      // Checklist guía
+      document.getElementById("chk-2").textContent = iaOk ? "✓ CONECTADO" : "PENDIENTE";
+      document.getElementById("chk-2").className = `text-[11px] font-mono ${iaOk ? "text-emerald-400" : "text-amber-400"}`;
+      document.getElementById("chk-3").textContent = (r.postgres && r.neo4j) ? "✓ ONLINE" : "PARCIAL";
+      document.getElementById("chk-3").className = `text-[11px] font-mono ${(r.postgres && r.neo4j) ? "text-emerald-400" : "text-amber-400"}`;
+    }
+
+    const ROLE_KEYS = ["perfil-tracker", "buscador-ofertas", "adaptador-cv", "preparador-entrevistas"];
+
+    function renderRolesMatrix(rolesCfg, rolesEf) {
+      const wrap = document.getElementById("roles-matrix");
+      if (!wrap || !rolesCfg) return;
+      wrap.innerHTML = ROLE_KEYS.map(rk => {
+        const r = rolesCfg[rk] || {};
+        const ef = (rolesEf || {})[rk] || {};
+        return `
+          <div class="bg-canvas hairline rounded-lg p-3 grid grid-cols-1 lg:grid-cols-12 gap-2.5 items-center">
+            <div class="lg:col-span-4">
+              <div class="flex items-center gap-2">
+                <span class="text-xs font-semibold text-zinc-100">${r.nombre || rk}</span>
+                <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-elevated text-zinc-400">${rk}</span>
+              </div>
+              <div class="text-[11px] text-zinc-500 mt-0.5">${r.tier || ""} · ${r.descripcion || ""}</div>
+            </div>
+            <div class="lg:col-span-3">
+              <select id="role-prov-${rk}" class="w-full bg-surface hairline rounded-lg px-2.5 py-1.5 text-xs text-zinc-200">
+                <option value="" ${!r.provider ? "selected" : ""}>Heredar global</option>
+                <option value="openrouter" ${r.provider === "openrouter" ? "selected" : ""}>OpenRouter</option>
+                <option value="gemini" ${r.provider === "gemini" ? "selected" : ""}>Gemini</option>
+                <option value="anthropic" ${r.provider === "anthropic" ? "selected" : ""}>Anthropic</option>
+                <option value="openai" ${r.provider === "openai" ? "selected" : ""}>OpenAI</option>
+                <option value="ollama" ${r.provider === "ollama" ? "selected" : ""}>Ollama</option>
+                <option value="agy" ${r.provider === "agy" ? "selected" : ""}>agy CLI</option>
+              </select>
+            </div>
+            <div class="lg:col-span-3">
+              <input id="role-model-${rk}" list="openrouter-presets" type="text" value="${r.model || ""}"
+                     placeholder="Heredar (${ef.model || "default"})"
+                     class="w-full bg-surface hairline rounded-lg px-2.5 py-1.5 text-xs font-mono text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-indigo-500" />
+            </div>
+            <div class="lg:col-span-2 flex items-center justify-end gap-2">
+              <span class="text-[10px] font-mono text-emerald-400 truncate max-w-[90px]" title="Activo: ${ef.provider}/${ef.model}">${ef.provider || "-"}</span>
+              <button type="button" onclick="testIA('${rk}')" class="px-2.5 py-1 text-[11px] rounded-md bg-elevated hover:bg-zinc-800 hairline text-zinc-200 shrink-0">
+                ⚡ Probar
+              </button>
+            </div>
+          </div>
+        `;
+      }).join("");
+    }
+
+    function aplicarPresetAhorro() {
+      const preset = {
+        "perfil-tracker": { provider: "openrouter", model: "openrouter/free" },
+        "buscador-ofertas": { provider: "openrouter", model: "google/gemini-2.5-flash" },
+        "adaptador-cv": { provider: "openrouter", model: "anthropic/claude-sonnet-4" },
+        "preparador-entrevistas": { provider: "openrouter", model: "google/gemini-2.5-pro" },
+      };
+      for (const rk of ROLE_KEYS) {
+        const p = document.getElementById(`role-prov-${rk}`);
+        const m = document.getElementById(`role-model-${rk}`);
+        if (p) p.value = preset[rk].provider;
+        if (m) m.value = preset[rk].model;
+      }
+      toast("Preset aplicado — haz clic en 'Guardar Configuración' para confirmar", "ok");
+    }
+
+    async function loadConfigIA() {
+      const c = await fetch("/api/config/ia").then(x => x.json());
+      document.getElementById("cfg-active-label").textContent = `${c.activo.provider} / ${c.activo.model}`;
+      document.getElementById("cfg-provider").value = c.AI_PROVIDER || "";
+      document.getElementById("cfg-openrouter-key").value = c.OPENROUTER_API_KEY || "";
+      document.getElementById("cfg-openrouter-model").value = c.OPENROUTER_MODEL || "google/gemini-2.5-flash";
+      document.getElementById("cfg-gemini-key").value = c.GEMINI_API_KEY || "";
+      document.getElementById("cfg-gemini-model").value = c.GEMINI_MODEL || "gemini-2.5-flash";
+      document.getElementById("cfg-anthropic-key").value = c.ANTHROPIC_API_KEY || "";
+      document.getElementById("cfg-anthropic-model").value = c.ANTHROPIC_MODEL || "claude-sonnet-4-5";
+      document.getElementById("cfg-openai-key").value = c.OPENAI_API_KEY || "";
+      document.getElementById("cfg-openai-model").value = c.OPENAI_MODEL || "gpt-4o-mini";
+      document.getElementById("cfg-ollama-url").value = c.OLLAMA_URL || "";
+      document.getElementById("cfg-ollama-model").value = c.OLLAMA_MODEL || "qwen2.5:7b";
+
+      renderRolesMatrix(c.roles, c.roles_efectivos);
+
+      const pOk = c.has_perfil && c.has_preferencias;
+      document.getElementById("chk-1").textContent = pOk ? "✓ CARGADO" : "FALTA";
+      document.getElementById("chk-1").className = `text-[11px] font-mono ${pOk ? "text-emerald-400" : "text-amber-400"}`;
+    }
+
+    async function saveConfigIA(ev) {
+      ev.preventDefault();
+      const roles = {};
+      for (const rk of ROLE_KEYS) {
+        const p = document.getElementById(`role-prov-${rk}`);
+        const m = document.getElementById(`role-model-${rk}`);
+        if (p && m) roles[rk] = { provider: p.value, model: m.value.trim() };
+      }
+      const body = {
+        AI_PROVIDER: document.getElementById("cfg-provider").value,
+        OPENROUTER_API_KEY: document.getElementById("cfg-openrouter-key").value,
+        OPENROUTER_MODEL: document.getElementById("cfg-openrouter-model").value,
+        GEMINI_API_KEY: document.getElementById("cfg-gemini-key").value,
+        GEMINI_MODEL: document.getElementById("cfg-gemini-model").value,
+        ANTHROPIC_API_KEY: document.getElementById("cfg-anthropic-key").value,
+        ANTHROPIC_MODEL: document.getElementById("cfg-anthropic-model").value,
+        OPENAI_API_KEY: document.getElementById("cfg-openai-key").value,
+        OPENAI_MODEL: document.getElementById("cfg-openai-model").value,
+        OLLAMA_URL: document.getElementById("cfg-ollama-url").value,
+        OLLAMA_MODEL: document.getElementById("cfg-ollama-model").value,
+        roles,
+      };
+      const r = await fetch("/api/config/ia", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)
+      }).then(x => x.json());
+      toast(`Configuración y matriz multi-agente guardadas`, "ok");
+      await Promise.all([loadHealth(), loadConfigIA()]);
+    }
+
+    async function testIA(rol = "") {
+      const btn = document.getElementById("btn-test-ia");
+      const box = document.getElementById("cfg-test-result");
+      btn.disabled = true;
+      btn.textContent = rol ? `Probando ${rol}...` : "Probando...";
+      try {
+        const q = rol ? `?rol=${encodeURIComponent(rol)}` : "";
+        const r = await fetch(`/api/config/ia/test${q}`, { method: "POST" }).then(x => x.json());
+        box.classList.remove("hidden");
+        const tag = rol ? `[${rol}] ` : "";
+        if (r.ok) {
+          box.className = "rounded-xl p-3.5 text-xs font-mono bg-emerald-950/60 border border-emerald-800/70 text-emerald-300";
+          box.textContent = `✓ ${tag}Conexión exitosa con ${r.provider}/${r.model} (${r.latency_ms} ms)`;
+          toast(`${tag}Conexión IA verificada`, "ok");
+        } else {
+          box.className = "rounded-xl p-3.5 text-xs font-mono bg-rose-950/60 border border-rose-800/70 text-rose-300";
+          box.textContent = `✕ ${tag}Error (${r.provider}/${r.model}): ${r.error}`;
+          toast(`${tag}Falló la prueba de IA`, "err");
+        }
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "⚡ Probar Conexión IA";
+      }
+    }
+
+    async function loadData() {
+      const [ofertas, grafo] = await Promise.all([
+        fetch("/api/ofertas").then(x => x.json()),
+        fetch("/api/grafo/stats").then(x => x.json()),
+      ]);
+      OFERTAS = ofertas;
+      const activas = ofertas.filter(o => !["descartada", "rechazada"].includes(o.estado));
+      const archivadas = ofertas.filter(o => ["descartada", "rechazada"].includes(o.estado));
+      document.getElementById("nav-count-activas").textContent = activas.length;
+      document.getElementById("nav-count-archivo").textContent = archivadas.length;
+      document.getElementById("kpi-total").textContent = activas.length;
+      document.getElementById("kpi-alta").textContent = activas.filter(o => o.prioridad === "alta").length;
+      document.getElementById("kpi-cv").textContent = activas.filter(o => o.estado === "cv_generado").length;
+      document.getElementById("kpi-post").textContent = activas.filter(o => o.estado === "postulado").length;
+
+      document.getElementById("g-nodos").textContent = grafo.nodos;
+      document.getElementById("g-aristas").textContent = grafo.aristas;
+      document.getElementById("g-source").textContent = grafo.source;
+      document.getElementById("radar-cubiertos").innerHTML = (grafo.top_cubiertos || []).map(s =>
+        `<span class="text-xs font-mono px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/25 text-emerald-300">${s.skill} <span class="text-emerald-500">· ${s.demanda}</span></span>`
+      ).join("") || '<span class="text-xs text-zinc-500">Sin datos sincronizados</span>';
+      document.getElementById("radar-brechas").innerHTML = (grafo.top_brechas || []).map(s =>
+        `<span class="text-xs font-mono px-2.5 py-1 rounded-lg bg-rose-500/10 border border-rose-500/25 text-rose-300">${s.skill} <span class="text-rose-400">· ${s.demanda}</span></span>`
+      ).join("") || '<span class="text-xs text-zinc-500">Sin brechas detectadas</span>';
+
+      renderBoard();
+      renderArchivo();
+      if (SELECTED) {
+        const updated = OFERTAS.find(o => o.id === SELECTED.id);
+        if (updated) openDrawer(updated);
+      }
+    }
+
+    function cvPdfUrl(cvPath) {
+      return cvPath ? "/api/files/" + cvPath.replace(/\.md$/, ".pdf") : null;
+    }
+
+    // ---- Drag & Drop ----
+    function onDragStart(ev, id) {
+      DRAGGED_ID = id;
+      ev.dataTransfer.setData("text/plain", id);
+      ev.currentTarget.classList.add("card-dragging");
+    }
+    function onDragEnd(ev) { ev.currentTarget.classList.remove("card-dragging"); }
+    function onDragOver(ev, isDanger = false) {
+      ev.preventDefault();
+      ev.currentTarget.classList.add(isDanger ? "drop-danger" : "drop-active");
+    }
+    function onDragLeave(ev) { ev.currentTarget.classList.remove("drop-active", "drop-danger"); }
+    async function onDrop(ev, targetEstado) {
+      ev.preventDefault();
+      ev.currentTarget.classList.remove("drop-active", "drop-danger");
+      const id = ev.dataTransfer.getData("text/plain") || DRAGGED_ID;
+      if (!id) return;
+      const body = { estado: targetEstado, forzar: true };
+      if (targetEstado === "descartada") body.motivo = "Descartada desde Kanban";
+      if (targetEstado === "rechazada") body.nota = "Rechazada por la empresa";
+      toast(targetEstado === "cv_generado" ? "Moviendo y preparando CV PDF..." : `Moviendo a ${targetEstado}...`);
+      const r = await fetch(`/api/ofertas/${encodeURIComponent(id)}/mover`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)
+      });
+      if (!r.ok) {
+        toast("Error: " + await r.text(), "err");
+      } else {
+        toast(`Movida a ${targetEstado}`, "ok");
+      }
+      await loadData();
+    }
+
+    function renderArchivo() {
+      const tbody = document.getElementById("arch-tbody");
+      if (!tbody) return;
+      const q = (document.getElementById("arch-search")?.value || "").toLowerCase();
+      const f = document.getElementById("arch-filter")?.value || "";
+      const all = OFERTAS.filter(o => ["descartada", "rechazada"].includes(o.estado));
+      document.getElementById("arch-total").textContent = all.length;
+      document.getElementById("arch-rech").textContent = all.filter(o => o.estado === "rechazada").length;
+      document.getElementById("arch-desc").textContent = all.filter(o => o.estado === "descartada").length;
+
+      const list = all.filter(o => {
+        if (f && o.estado !== f) return false;
+        if (q && !`${o.empresa} ${o.cargo} ${o.motivo_descarte || ""} ${o.notas || ""}`.toLowerCase().includes(q)) return false;
+        return true;
+      });
+
+      if (!list.length) {
+        tbody.innerHTML = '<tr><td colspan="6" class="px-4 py-8 text-center text-zinc-500">No hay ofertas en esta categoría.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = list.map(o => {
+        const isRech = o.estado === "rechazada";
+        const badge = isRech
+          ? '<span class="px-2 py-0.5 rounded-full text-[10px] font-mono bg-amber-500/15 border border-amber-500/30 text-amber-300">rechazada</span>'
+          : '<span class="px-2 py-0.5 rounded-full text-[10px] font-mono bg-rose-500/15 border border-rose-500/30 text-rose-300">descartada</span>';
+        const motivo = o.motivo_descarte || o.notas || "Sin motivo registrado";
+        return `
+          <tr class="hover:bg-elevated/50 transition">
+            <td class="px-4 py-3">
+              <div class="font-medium text-zinc-100">${o.empresa}</div>
+              <div class="text-[11px] text-zinc-400">${o.cargo}</div>
+            </td>
+            <td class="px-4 py-3">${badge}</td>
+            <td class="px-4 py-3 font-mono text-zinc-300 tabular">${o.match_score ?? "-"}</td>
+            <td class="px-4 py-3 font-mono text-[11px] text-zinc-400 tabular">${o.fecha_captura || "-"}</td>
+            <td class="px-4 py-3 text-zinc-400 max-w-sm truncate" title="${motivo.replace(/"/g, '&quot;')}">${motivo}</td>
+            <td class="px-4 py-3 text-right space-x-1.5 whitespace-nowrap">
+              <button onclick="openDrawerById('${o.id}')" class="px-2.5 py-1 text-[11px] rounded bg-elevated hover:bg-zinc-800 hairline text-zinc-200">Detalle</button>
+              <button onclick="restaurarOferta('${o.id}')" class="px-2.5 py-1 text-[11px] rounded bg-indigo-600/20 hover:bg-indigo-600/30 border border-indigo-500/40 text-indigo-300">Restaurar</button>
+            </td>
+          </tr>
+        `;
+      }).join("");
+    }
+
+    function openDrawerById(id) {
+      const o = OFERTAS.find(x => x.id === id);
+      if (o) openDrawer(o);
+    }
+
+    async function restaurarOferta(id) {
+      toast("Restaurando oferta a Evaluada...");
+      const r = await fetch(`/api/ofertas/${encodeURIComponent(id)}/mover`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ estado: "evaluada", forzar: true, nota: "Restaurada desde Historial" })
+      });
+      if (!r.ok) return toast("Error al restaurar: " + await r.text(), "err");
+      await loadData();
+      toast("Oferta restaurada al Kanban", "ok");
+    }
+
+    function renderBoard() {
+      const q = document.getElementById("search").value.toLowerCase();
+      const prio = document.getElementById("filter-prio").value;
+      const ang = document.getElementById("filter-angulo").value;
+
+      const filtered = OFERTAS.filter(o => {
+        if (["descartada", "rechazada"].includes(o.estado)) return false;
+        if (prio && o.prioridad !== prio) return false;
+        if (ang && o.angulo !== ang) return false;
+        if (q && !`${o.empresa} ${o.cargo} ${o.modalidad || ""} ${(o.keywords || []).join(" ")}`.toLowerCase().includes(q)) return false;
+        return true;
+      });
+
+      const board = document.getElementById("board");
+      board.innerHTML = "";
+
+      for (const col of COLS) {
+        const items = filtered.filter(o =>
+          col.key === "entrevista_tecnica"
+            ? ["entrevista_tecnica", "oferta"].includes(o.estado)
+            : o.estado === col.key
+        );
+
+        const colEl = document.createElement("div");
+        colEl.className = "bg-surface/60 hairline rounded-xl p-2.5 flex flex-col gap-2 min-h-[480px] transition";
+        colEl.ondragover = (e) => onDragOver(e, false);
+        colEl.ondragleave = onDragLeave;
+        colEl.ondrop = (e) => onDrop(e, col.key);
+
+        colEl.innerHTML = `
+          <div class="flex items-center justify-between px-1.5 py-1 mb-0.5">
+            <span class="flex items-center gap-2 text-xs font-semibold text-zinc-200">
+              <span class="w-1.5 h-1.5 rounded-full ${col.dot}"></span>${col.label}
+            </span>
+            <span class="text-[11px] font-mono text-zinc-500 tabular">${items.length}</span>
+          </div>`;
+
+        for (const o of items.slice(0, 45)) {
+          const score = o.match_score ?? 0;
+          const scoreCls = score >= 80
+            ? "text-emerald-300 bg-emerald-500/10 border-emerald-500/25"
+            : score >= 65
+            ? "text-amber-300 bg-amber-500/10 border-amber-500/25"
+            : "text-rose-300 bg-rose-500/10 border-rose-500/25";
+
+          const card = document.createElement("div");
+          card.draggable = true;
+          card.ondragstart = (e) => onDragStart(e, o.id);
+          card.ondragend = onDragEnd;
+          card.onclick = () => openDrawer(o);
+          card.className = "card-surface cursor-grab active:cursor-grabbing rounded-[10px] p-3 space-y-2 select-none";
+          card.innerHTML = `
+            <div class="flex items-center justify-between gap-2">
+              <span class="text-[11px] font-medium text-zinc-400 truncate">${o.empresa}</span>
+              <span class="text-[11px] font-mono font-semibold px-1.5 py-0.5 rounded border tabular ${scoreCls}">${o.match_score ?? "-"}</span>
+            </div>
+            <div class="text-[13px] font-medium text-zinc-100 leading-snug line-clamp-2">${o.cargo}</div>
+            <div class="text-[11px] text-zinc-500 truncate">${o.modalidad || "Por confirmar"}</div>
+            <div class="flex items-center justify-between pt-1 hairline-t text-[10px] text-zinc-500">
+              <span class="font-mono px-1.5 py-0.5 rounded bg-canvas hairline text-zinc-400">${o.angulo || "base"}</span>
+              <div class="flex items-center gap-2">
+                ${o.cv ? `<span class="text-emerald-400 font-medium">PDF</span>` : ""}
+                ${o.url ? `<a href="${o.url}" target="_blank" onclick="event.stopPropagation()" class="hover:text-indigo-400">↗</a>` : ""}
+              </div>
+            </div>
+          `;
+          colEl.appendChild(card);
+        }
+        board.appendChild(colEl);
+      }
+    }
+
+    // ---- Drawer Detalle ----
+    async function openDrawer(o) {
+      SELECTED = o;
+      document.getElementById("drawer-backdrop").classList.remove("hidden");
+      document.getElementById("drawer").classList.remove("hidden");
+
+      document.getElementById("d-empresa").textContent = `${o.empresa} · ${o.portal || ""}`;
+      document.getElementById("d-cargo").textContent = o.cargo;
+      document.getElementById("d-meta").textContent = `${o.modalidad || ""} · ${o.idioma || ""} · ${o.salario || ""}`;
+      document.getElementById("d-score").textContent = `Score ${o.match_score ?? "-"}/100 · ${o.prioridad}`;
+      document.getElementById("d-evalby").textContent = o.evaluado_por || "";
+      document.getElementById("d-url").href = o.url || "#";
+      document.getElementById("d-move-select").value = o.estado || "evaluada";
+      document.getElementById("d-resumen-box").textContent = o.resumen_ia || o.notas || "Sin resumen de IA registrado todavía.";
+
+      const d = o.desglose || {};
+      const barras = [
+        ["Técnico Core (FinOps / AWS / SecOps)", d.tecnico_35, 35],
+        ["100% Remoto Chile / LatAm", d.remoto_chile_20, 20],
+        ["Inglés C1", d.ingles_15, 15],
+        ["Salario / Empresa", d.salario_empresa_15, 15],
+        ["Seniority (1–3 años)", d.seniority_15, 15],
+      ];
+      document.getElementById("d-desglose").innerHTML = Object.keys(d).length
+        ? barras.map(([lbl, val, max]) => {
+            const pct = Math.max(0, Math.min(100, Math.round(((val || 0) / max) * 100)));
+            return `<div>
+              <div class="flex justify-between mb-1"><span class="text-zinc-300">${lbl}</span><span class="font-mono text-zinc-400 tabular">${val ?? 0}/${max}</span></div>
+              <div class="h-1.5 bg-elevated rounded-full overflow-hidden"><div class="h-full bg-indigo-500 rounded-full" style="width:${pct}%"></div></div>
+            </div>`;
+          }).join("")
+        : '<div class="text-zinc-500">Esta oferta fue capturada antes del desglose automático.</div>';
+
+      document.getElementById("d-brechas").innerHTML = (o.brechas || []).map(b => `<li>${b}</li>`).join("") || "<li>Ninguna registrada</li>";
+      document.getElementById("d-keywords").innerHTML = (o.keywords || []).map(k =>
+        `<span class="text-[11px] font-mono px-2 py-0.5 rounded bg-elevated hairline text-zinc-300">${k}</span>`
+      ).join("") || '<span class="text-zinc-500">-</span>';
+
+      const pdf = cvPdfUrl(o.cv);
+      document.getElementById("d-pdf-link").classList.toggle("hidden", !pdf);
+      document.getElementById("d-pdf-wrap").classList.toggle("hidden", !pdf);
+      if (pdf) {
+        document.getElementById("d-pdf-link").href = pdf;
+        document.getElementById("d-pdf-frame").src = pdf;
+      }
+
+      const grafoEl = document.getElementById("d-grafo-logros");
+      grafoEl.innerHTML = '<div class="text-zinc-500 font-mono">Consultando Neo4j GraphRAG...</div>';
+      const gr = await fetch(`/api/ofertas/${encodeURIComponent(o.id)}/grafo`).then(x => x.json());
+      if (gr.logros && gr.logros.length) {
+        grafoEl.innerHTML = gr.logros.map(l => `
+          <div class="bg-canvas border border-violet-500/25 rounded-lg p-3">
+            <div class="font-medium text-violet-200">${l.titulo}</div>
+            <div class="text-[11px] text-zinc-400 mt-1">Impacto: <span class="text-zinc-200">${l.ahorro || "-"}</span> · Skills: <span class="font-mono text-violet-400">${(l.skills_match || []).join(", ")}</span></div>
+          </div>
+        `).join("");
+      } else if (o.logros_grafo && o.logros_grafo.length) {
+        grafoEl.innerHTML = o.logros_grafo.map(t => `<div class="bg-canvas border border-violet-500/25 rounded-lg p-2.5 text-violet-200">${t}</div>`).join("");
+      } else {
+        grafoEl.innerHTML = '<div class="text-zinc-500">Sin match directo de logros en el grafo.</div>';
+      }
+    }
+
+    function closeDrawer() {
+      SELECTED = null;
+      document.getElementById("drawer-backdrop").classList.add("hidden");
+      document.getElementById("drawer").classList.add("hidden");
+    }
+
+    async function moverDesdeDrawer(estado) {
+      if (!SELECTED || !estado) return;
+      const body = { estado, forzar: true };
+      if (estado === "descartada") {
+        const m = prompt("Motivo de descarte:", "No calza con mis métricas/ubicación");
+        if (!m) return;
+        body.motivo = m;
+      }
+      if (estado === "rechazada") body.nota = "Rechazada por la empresa";
+      toast(estado === "cv_generado" ? "Moviendo y preparando CV PDF..." : `Moviendo a ${estado}...`);
+      const r = await fetch(`/api/ofertas/${encodeURIComponent(SELECTED.id)}/mover`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!r.ok) return toast("Error al mover: " + await r.text(), "err");
+      await loadData();
+      toast(`Movida a ${estado}`, "ok");
+    }
+
+    async function generarCvDrawer() {
+      if (!SELECTED) return;
+      toast("Ensamblando CV PDF...");
+      const r = await fetch(`/api/ofertas/${encodeURIComponent(SELECTED.id)}/generar-cv`, { method: "POST" });
+      if (!r.ok) return toast("Error generando CV: " + await r.text(), "err");
+      await loadData();
+      toast("CV PDF generado y listo", "ok");
+    }
+
+    async function descartarDrawer() {
+      if (!SELECTED) return;
+      const motivo = prompt("Motivo de descarte:", "No calza con mis métricas/ubicación");
+      if (!motivo) return;
+      await fetch(`/api/ofertas/${encodeURIComponent(SELECTED.id)}/mover`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ estado: "descartada", motivo, forzar: true }),
+      });
+      closeDrawer();
+      await loadData();
+      toast("Oferta descartada", "ok");
+    }
+
+    async function analizarUrl() {
+      const url = document.getElementById("url-input").value.trim();
+      if (!url) return;
+      const btn = document.getElementById("btn-url");
+      const box = document.getElementById("url-result");
+      btn.disabled = true;
+      btn.textContent = "Analizando...";
+      try {
+        const r = await fetch("/api/analizar-url", {
+          method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url, guardar: true })
+        });
+        const data = await r.json();
+        if (!r.ok) {
+          toast(data.detail || "Error analizando URL", "err");
+        } else {
+          document.getElementById("url-input").value = "";
+          const ev = data.evaluacion;
+          box.classList.remove("hidden");
+          box.innerHTML = `
+            <div class="flex justify-between items-center">
+              <strong class="text-zinc-100">${data.oferta.empresa} — ${data.oferta.titulo}</strong>
+              <span class="font-mono font-semibold px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300">${ev.match_score}/100 · ${ev.prioridad}</span>
+            </div>
+            <div class="text-zinc-400">${ev.modalidad_real} · ${ev.salario_detectado}</div>
+            <p class="text-zinc-300 leading-relaxed">${ev.resumen_ia}</p>
+          `;
+          toast(`Evaluada: ${ev.match_score}/100 (${ev.prioridad})`, "ok");
+          await loadData();
+        }
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "Evaluar IA";
+      }
+    }
+
+    async function syncAll() {
+      toast("Sincronizando Postgres y Neo4j...");
+      await fetch("/api/sync", { method: "POST" });
+      await Promise.all([loadHealth(), loadData()]);
+      toast("Bases de datos sincronizadas", "ok");
+    }
+
+    async function runPipeline() {
+      const foco = document.getElementById("pipe-foco").value;
+      const max_eval = parseInt(document.getElementById("pipe-max").value, 10) || 12;
+      const r = await fetch("/api/pipeline/run", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ foco, max_eval })
+      });
+      if (!r.ok) return toast(await r.text(), "err");
+      document.getElementById("nav-pipe-dot").classList.remove("hidden");
+      document.getElementById("console-dot").className = "w-2 h-2 rounded-full bg-indigo-400 animate-pulse";
+      document.getElementById("console-state").textContent = "En ejecución...";
+      toast("Rastreo multi-fuente iniciado", "ok");
+
+      const timer = setInterval(async () => {
+        const s = await fetch("/api/pipeline/status").then(x => x.json());
+        const out = document.getElementById("console-out");
+        out.textContent = (s.logs || []).join("\n") || "Ejecutando...";
+        out.scrollTop = out.scrollHeight;
+        if (!s.running) {
+          clearInterval(timer);
+          document.getElementById("nav-pipe-dot").classList.add("hidden");
+          document.getElementById("console-dot").className = "w-2 h-2 rounded-full bg-emerald-400";
+          document.getElementById("console-state").textContent = `Finalizado (código ${s.last_exit})`;
+          await loadData();
+          toast("Búsqueda y evaluación finalizadas", "ok");
+        }
+      }, 2000);
+    }
+
+    // Atajos de teclado
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") closeDrawer();
+      if (e.key === "/" && document.activeElement.tagName !== "INPUT" && document.activeElement.tagName !== "TEXTAREA") {
+        e.preventDefault();
+        showView("kanban");
+        document.getElementById("search").focus();
+      }
+    });
+
+    loadHealth();
+    loadData();
+    loadConfigIA();
+  </script>
+</body>
+</html>

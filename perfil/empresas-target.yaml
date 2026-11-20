@@ -1,11 +1,13 @@
-# Catálogo de empresas y ATS para rastreo directo de vacantes
-# Este archivo es dinámico: el agente rastreador puede agregar nuevas empresas descubiertas automáticamente.
+# Catálogo de empresas y ATS para rastreo directo de vacantes (100% verificado en vivo)
+# Organizado por ATS con API pública (0 tokens de captura) + foco Chile/LatAm/FinOps/AWS.
 
 greenhouse:
+  # FinOps, Cloud, DevSecOps & Remote-First Global
+  - doitintl        # DoiT International (AWS Premier Partner + FinOps líder)
   - canonical
   - datadog
   - gitlab
-  - caylent
+  - caylent         # AWS Premier Partner
   - ramp
   - remote
   - grafana
@@ -18,32 +20,98 @@ greenhouse:
   - zapier
   - cloudflare
   - auth0
+  - tailscale       # 100% Global Remote
+  - vercel
+  - chainguard      # DevSecOps
+  - fivetran
+  # Chile & LatAm Best Places to Work / Fintech / Tech
+  - clara           # Fintech LatAm
+  - vtex            # Tech LatAm
+  - cabify          # Chile / LatAm
+  - thoughtworks    # GPTW Chile / LatAm
 
 ashby:
-  - supabase
+  # FinOps & Cloud Cost Especialistas (Nicho #1)
+  - cloudzero       # Plataforma líder de Cloud FinOps
+  - finout          # Plataforma líder de Cloud FinOps
+  - vantage         # Plataforma líder de Cloud FinOps
+  # Remote-First Global, AI & DevSecOps
+  - supabase        # 100% Work from Anywhere
+  - posthog         # 100% Work from Anywhere
+  - snyk            # DevSecOps
   - n8n
   - ashby
-  - truelogic
+  - truelogic       # Remote LatAm
   - linear
   - replicate
   - together-ai
   - modal
   - mistral
   - perplexity
-  - modal-labs
   - cursor
+  - airbyte
+  - astronomer
+  # LatAm Fintech & Best Places to Work
+  - nubank          # Fintech LatAm
+  - belvo           # Open Finance LatAm
+  - simetrik        # Fintech LatAm
+  - kueski          # Fintech LatAm
+  - thoughtworks    # GPTW Chile / LatAm
 
 lever:
-  - xepelin
-  - toku
+  # Chile & LatAm Fintech / Tech
+  - fintual         # Chile (Fintech GPTW)
+  - xepelin         # Chile (Fintech Soonicorn)
+  - toku            # Chile (Fintech)
+  - despegar        # LatAm
+  - kavak           # LatAm
+  # Global Remote
   - klarna
   - kraken
   - postman
   - plaid
   - coursera
 
+teamtailor:
+  # Top Fintechs & Tech de Chile (RSS público directo)
+  - global66        # Chile (Fintech)
+  - betterfly       # Chile (Unicornio)
+  - tenpo           # Chile (Fintech)
+  - neat            # Chile (Fintech)
+
+breezy:
+  # Chile Empresas B / Fintech
+  - cumplo          # Chile (Fintech Empresa B)
+
+smartrecruiters:
+  # Chile & LatAm Tech
+  - acidlabs        # Chile (Consultora Tech GPTW)
+  - uber            # Hub Ingeniería Chile (ex-Cornershop)
+
 portales_directos:
-  - nombre: Get on Board
-    url_base: https://www.getonbrd.com/jobs-feed
-  - nombre: FinOps Foundation
+  # Portales integrados en rastrear_ats.py (APIs/RSS públicos)
+  - nombre: Get on Board (Chile & LatAm Remoto)
+    url_base: https://www.getonbrd.com/api/v0/search/jobs
+  - nombre: We Work Remotely (DevOps & Backend RSS)
+    url_base: https://weworkremotely.com/categories/remote-devops-sysadmin-jobs.rss
+  - nombre: Jobicy (Remote Tech JSON)
+    url_base: https://jobicy.com/api/v2/remote-jobs
+  - nombre: RemoteOK
+    url_base: https://remoteok.com/api
+  - nombre: Remotive
+    url_base: https://remotive.com/api/remote-jobs
+  - nombre: Himalayas
+    url_base: https://himalayas.app/jobs/api
+  # Referencia manual / URL Analyzer (sin API JSON abierta aún — top GPTW Chile & FinOps)
+  - nombre: Mercado Libre Chile (GPTW #1 Chile)
+    url_base: https://mercadolibre.eightfold.ai/careers
+  - nombre: Buk (GPTW Chile)
+    url_base: https://www.takealuk.com/
+  - nombre: Fintoc (Chile Fintech)
+    url_base: https://fintoc.com/careers
+  - nombre: NotCo (Chile Unicornio)
+    url_base: https://notco.com/notco-squad
+  - nombre: Wazuh (Remote Global SIEM/AWS)
+    url_base: https://wazuh.com/careers/
+  - nombre: FinOps Foundation Job Board
     url_base: https://jobs.finops.org/

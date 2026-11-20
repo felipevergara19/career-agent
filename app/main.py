@@ -500,6 +500,7 @@ def test_config_ia(rol: str | None = None):
 def get_perfil():
     perfil = perfil_builder.cargar_perfil_estructurado()
     docs = perfil_builder.listar_documentos()
+    historicas = perfil_builder.detectar_fuentes_historicas()
     completitud = perfil_builder.calcular_completitud(perfil, docs)
     perfil_md = (
         perfil_builder.PERFIL_MD_PATH.read_text(encoding="utf-8", errors="ignore")
@@ -514,6 +515,7 @@ def get_perfil():
     return {
         "perfil": perfil,
         "documentos": docs,
+        "fuentes_historicas": historicas,
         "completitud": completitud,
         "has_perfil_md": perfil_builder.PERFIL_MD_PATH.is_file(),
         "has_preferencias_md": perfil_builder.PREF_MD_PATH.is_file(),

@@ -435,26 +435,395 @@ def importar_url_perfil(url: str, tipo: str = "auto") -> dict:
 
 
 # --------------------------------------------------------- Structured Profile
+def _es_plantilla_ejemplo(texto: str) -> bool:
+    """Detecta si un Markdown sigue siendo la plantilla de ejemplo sin personalizar."""
+    low = (texto or "").lower()
+    marcadores = (
+        "[tu nombre completo]",
+        "tu nombre completo",
+        "tu-email@ejemplo.com",
+        "plantilla de ejemplo.",
+        "$x,xxx",
+    )
+    return sum(1 for m in marcadores if m in low) >= 2
+
+
+def detectar_fuentes_historicas() -> list[dict]:
+    """Lista los archivos históricos reales que el usuario ya tenía en el repo
+    (perfil-maestro.md, preferencias.md y CVs en cvs-generados/base/)."""
+    fuentes: list[dict] = []
+    if PERFIL_MD_PATH.is_file():
+        txt = PERFIL_MD_PATH.read_text(encoding="utf-8", errors="ignore")
+        if txt.strip() and not _es_plantilla_ejemplo(txt):
+            fuentes.append({
+                "tipo": "perfil_md",
+                "nombre": "perfil/perfil-maestro.md",
+                "ruta": "perfil/perfil-maestro.md",
+                "caracteres": len(txt),
+                "descripcion": "Perfil Maestro histórico del repositorio",
+            })
+    if PREF_MD_PATH.is_file():
+        txt = PREF_MD_PATH.read_text(encoding="utf-8", errors="ignore")
+        if txt.strip() and not _es_plantilla_ejemplo(txt):
+            fuentes.append({
+                "tipo": "preferencias_md",
+                "nombre": "perfil/preferencias.md",
+                "ruta": "perfil/preferencias.md",
+                "caracteres": len(txt),
+                "descripcion": "Preferencias, no negociables y rúbrica histórica",
+            })
+    if CV_BASE_DIR.is_dir():
+        for f in sorted(CV_BASE_DIR.glob("*.pdf"), key=lambda p: p.stat().st_mtime, reverse=True):
+            fuentes.append({
+                "tipo": "cv_base_pdf",
+                "nombre": f.name,
+                "ruta": str(f.relative_to(ROOT).as_posix()),
+                "caracteres": f.stat().st_size,
+                "descripcion": "CV Base PDF existente en cvs-generados/base/",
+            })
+    return fuentes
+
+
+def _inferir_angulo_texto(texto: str) -> str:
+    low = (texto or "").lower()
+    if any(k in low for k in ("finops", "savings plan", "cost", "ahorro", "elasticache", "nat gateway", "cur", "duckdb")):
+        return "finops"
+    if any(k in low for k in ("wazuh", "siem", "bitdefender", "guardduty", "incident.io", "secops", "phishing", "waf", "dkim", "oauth")):
+        return "secops-siem"
+    if any(k in low for k in ("n8n", "gpt-4", "gemini", "rag", "llm", "llamadas", "ai ", "ia ")):
+        return "ai-automation"
+    if any(k in low for k in ("iam", "devsecops", "terraform", "ansible", "eks", "kubernetes", "aws", "docker")):
+        return "devsecops"
+    return "base"
+
+
+def _parsear_preferencias_md(texto: str, pref: dict) -> None:
+    """Extrae puestos objetivo, áreas, geografía, modalidad, salario, no negociables,
+    exclusiones y rúbrica desde un perfil/preferencias.md histórico."""
+    if not texto.strip() or _es_plantilla_ejemplo(texto):
+        return
+    low = texto.lower()
+
+    # Modalidad
+    if "100% remot" in low or "fully remote" in low or "work from anywhere" in low:
+        pref["modalidad"] = "remoto_100"
+    elif "híbrido" in low or "hibrido" in low or "hybrid" in low:
+        if "descartar" not in low.split("híbrido")[0][-120:]:
+            pref["modalidad"] = "hibrido"
+
+    # País y regiones
+    for pais_cand in ("Chile", "México", "Colombia", "Argentina", "Perú", "España", "Uruguay", "Brasil", "Estados Unidos"):
+        if re.search(rf"\b{re.escape(pais_cand)}\b", texto, re.I):
+            pref["pais_residencia"] = pais_cand
+            break
+
+    regiones = []
+    for reg in ("Chile", "LatAm", "Global", "Worldwide", "Americas", "Remote", "Europe", "US", "España", "México", "Colombia"):
+        if re.search(rf"\b{re.escape(reg)}\b", texto, re.I):
+            # Evitar agregar regiones que solo aparecen junto a "Only"
+            if re.search(rf"{re.escape(reg)}\s+only", texto, re.I) and reg in ("US", "Europe", "España"):
+                continue
+            regiones.append(reg)
+    if regiones:
+        pref["regiones_aceptadas"] = list(dict.fromkeys(regiones))
+
+    # Seniority y años
+    if re.search(r"1\s*[a–\-]\s*3\s*años|mid-?level|semi-?senior", low):
+        pref["seniority_objetivo"] = "mid"
+        pref["anos_experiencia"] = 3
+    elif re.search(r"junior|0\s*[a–\-]\s*2\s*años", low):
+        pref["seniority_objetivo"] = "junior"
+        pref["anos_experiencia"] = 1
+    elif re.search(r"5\+?\s*años.*senior|senior.*5\+?", low) and "descartar" not in low:
+        pref["seniority_objetivo"] = "senior"
+        pref["anos_experiencia"] = 5
+
+    # Solo IC
+    if "contribuidor individual" in low or "(ic)" in low:
+        pref["solo_ic"] = True
+
+    # Roles objetivo (todo lo que esté entre backticks en la sección 2)
+    m_roles = re.search(r"##\s*2\..*?(?=##\s*3\.|\Z)", texto, flags=re.S)
+    if m_roles:
+        roles_sec = m_roles.group(0)
+        roles_found = [r.strip() for r in re.findall(r"`([^`]{3,80})`", roles_sec) if r.strip()]
+        if roles_found:
+            pref["puestos_objetivo"] = list(dict.fromkeys(roles_found))[:16]
+
+    # Idiomas de trabajo
+    idiomas_t = []
+    if re.search(r"\bingl[eé]s\b|\benglish\b", low):
+        idiomas_t.append("Inglés")
+    if re.search(r"\bespañol\b|\bspanish\b", low):
+        idiomas_t.append("Español")
+    if idiomas_t:
+        pref["idiomas_trabajo"] = idiomas_t
+
+    # Salario USD/mes
+    m_usd = re.search(r"\$([0-9]{1,2}[,\.][0-9]{3})\s*[–\-a]+\s*\$([0-9]{1,2}[,\.][0-9]{3})\s*USD(?:/mes)?", texto, re.I)
+    if m_usd:
+        pref["salario"] = {
+            "moneda": "USD",
+            "periodo": "mes",
+            "minimo": int(re.sub(r"[^0-9]", "", m_usd.group(1))),
+            "ideal": int(re.sub(r"[^0-9]", "", m_usd.group(2))),
+        }
+
+    # No negociables (ítems numerados en sección 1)
+    m_sec1 = re.search(r"##\s*1\..*?(?=##\s*2\.|\Z)", texto, flags=re.S)
+    if m_sec1:
+        nn = []
+        for m_item in re.finditer(r"^\s*\d+\.\s+\*\*([^*:\n]+)\*\*", m_sec1.group(0), flags=re.M):
+            lbl = m_item.group(1).strip().rstrip(":")
+            if lbl:
+                nn.append(lbl)
+        if nn:
+            pref["no_negociables"] = nn[:8]
+
+    # Exclusiones
+    excls = []
+    if "híbrida o presencial" in low or "no es 100% remota" in low:
+        excls.extend(["presencial", "híbrido"])
+    if "us only" in low:
+        excls.append("us only")
+    if "eu only" in low:
+        excls.append("eu only")
+    if "engineering manager" in low or "scrum master" in low:
+        excls.extend(["manager", "director", "scrum master", "project manager"])
+    if "lead, staff, principal" in low or "exceso de seniority" in low:
+        excls.extend(["staff", "principal", "lead"])
+    if excls:
+        pref["exclusiones"] = list(dict.fromkeys(excls))
+
+    # Áreas explícitas (`- **Nombre** (`slug`): kw1, kw2`) o inferidas por roles/keywords
+    areas_expl = []
+    for m_a in re.finditer(r"^\s*-\s+\*\*([^*]+)\*\*\s*\(`([a-z0-9_-]+)`\):\s*(.+)$", texto, flags=re.M):
+        kws = [k.strip() for k in m_a.group(3).split(",") if k.strip()]
+        areas_expl.append({"slug": m_a.group(2).strip(), "nombre": m_a.group(1).strip(), "keywords": kws})
+    if areas_expl:
+        pref["areas"] = areas_expl
+    else:
+        areas_inf = []
+        roles_joined = " ".join(pref.get("puestos_objetivo") or []).lower() + " " + low[:3000]
+        if any(k in roles_joined for k in ("finops", "cost optimization", "cloud financial")):
+            areas_inf.append({"slug": "finops", "nombre": "Cloud FinOps & AWS Cost", "keywords": ["finops", "cloud cost", "cost optimization", "aws", "savings plans", "cost explorer", "cur"]})
+        if any(k in roles_joined for k in ("devsecops", "aws cloud", "cloud infrastructure", "cloudops")):
+            areas_inf.append({"slug": "devsecops", "nombre": "DevSecOps & AWS Cloud", "keywords": ["devsecops", "aws", "iam", "terraform", "cloudops", "cloud engineer", "platform engineer"]})
+        if any(k in roles_joined for k in ("secops", "siem", "wazuh", "cloud security", "aws security")):
+            areas_inf.append({"slug": "secops-siem", "nombre": "SecOps, SIEM & Cloud Security", "keywords": ["secops", "siem", "wazuh", "guardduty", "cloud security", "iam", "incident response"]})
+        if any(k in roles_joined for k in ("ai automation", "finops for ai", "n8n", "llm")):
+            areas_inf.append({"slug": "ai-automation", "nombre": "AI Automation & Python", "keywords": ["ai automation", "python", "llm", "n8n", "rag", "workflow automation", "boto3"]})
+        if areas_inf:
+            pref["areas"] = areas_inf
+
+    # Rúbrica desde tabla Markdown
+    rub_map = [
+        ("tecnico", r"alineaci[oó]n t[eé]cnica[^\n|]*\|\s*\*{0,2}(\d+)\s*pts"),
+        ("modalidad", r"modalidad[^\n|]*\|\s*\*{0,2}(\d+)\s*pts"),
+        ("idioma", r"(?:idioma|ingl[eé]s)[^\n|]*\|\s*\*{0,2}(\d+)\s*pts"),
+        ("salario", r"(?:salario|banda salarial)[^\n|]*\|\s*\*{0,2}(\d+)\s*pts"),
+        ("seniority", r"seniority[^\n|]*\|\s*\*{0,2}(\d+)\s*pts"),
+    ]
+    rub = dict(pref.get("rubrica") or {})
+    for key, pat in rub_map:
+        m = re.search(pat, texto, re.I)
+        if m and m.lastindex:
+            rub[key] = int(m.group(1))
+    pref["rubrica"] = rub
+
+
 def _seed_desde_markdown_existente() -> dict:
-    """Si el usuario ya tenía perfil/perfil-maestro.md manual, extrae campos básicos
-    para no empezar en blanco."""
+    """Si el usuario ya tenía perfil/perfil-maestro.md, perfil/preferencias.md,
+    grafo_conocimiento.json o CVs en cvs-generados/base/, carga toda su información
+    histórica automáticamente para no pedirle empezar desde cero."""
     perfil = copy.deepcopy(DEFAULT_PERFIL)
-    if not PERFIL_MD_PATH.is_file():
-        return perfil
-    texto = PERFIL_MD_PATH.read_text(encoding="utf-8", errors="ignore")
-
-    def _campo(label: str) -> str:
-        m = re.search(rf"^\s*-\s*\*\*{label}:\*\*\s*`?([^`\n]+)`?", texto, flags=re.M | re.I)
-        return m.group(1).strip() if m else ""
-
     dp = perfil["datos_personales"]
-    dp["nombre"] = _campo("Nombre completo")
-    dp["ubicacion"] = _campo("Ubicación base") or _campo("Ubicación")
-    dp["email"] = _campo("Email")
-    dp["telefono"] = _campo("Teléfono")
-    dp["linkedin"] = _campo("LinkedIn")
-    dp["github"] = _campo("GitHub")
-    perfil["titular_principal"] = _campo("Titular Principal")
+
+    # 1. Leer perfil/perfil-maestro.md si es real (no plantilla de ejemplo)
+    if PERFIL_MD_PATH.is_file():
+        texto = PERFIL_MD_PATH.read_text(encoding="utf-8", errors="ignore")
+        if texto.strip() and not _es_plantilla_ejemplo(texto):
+            def _campo(label: str) -> str:
+                m = re.search(rf"^\s*-\s*\*\*{label}:\*\*\s*`?([^`\n]+)`?", texto, flags=re.M | re.I)
+                return m.group(1).strip() if m else ""
+
+            dp["nombre"] = _campo("Nombre completo")
+            ubic_full = _campo("Ubicación base") or _campo("Ubicación")
+            dp["ubicacion"] = ubic_full
+            m_tz = re.search(r"\b(CLT|EST|CST|PST|CET|UTC[+-]\d+(?:\s*a\s*UTC[+-]\d+)?)\b", ubic_full)
+            if m_tz:
+                dp["zona_horaria"] = m_tz.group(0)
+            for pais_cand in ("Chile", "México", "Colombia", "Argentina", "Perú", "España", "Uruguay", "Brasil"):
+                if re.search(rf"\b{re.escape(pais_cand)}\b", ubic_full, re.I):
+                    dp["pais"] = pais_cand
+                    break
+            dp["email"] = _campo("Email")
+            dp["telefono"] = _campo("Teléfono")
+            dp["linkedin"] = _campo("LinkedIn")
+            dp["github"] = _campo("GitHub")
+            dp["portafolio"] = _campo("Portafolio")
+
+            # Idiomas
+            idiomas_found = []
+            for m_id in re.finditer(r"^\s{2,}-\s+\*\*([^:*]+):\*\*\s*(.+)$", texto, flags=re.M):
+                idm_name = m_id.group(1).strip()
+                if idm_name.lower() in ("español", "inglés", "ingles", "portugués", "francés", "alemán", "english", "spanish"):
+                    lvl = re.sub(r"\*\*", "", m_id.group(2)).strip()
+                    # Acortar nivel si trae explicación larga entre paréntesis
+                    lvl_short = lvl.split("(")[0].strip() or lvl[:40]
+                    idiomas_found.append({"idioma": idm_name, "nivel": lvl_short[:50]})
+            if idiomas_found:
+                dp["idiomas"] = idiomas_found
+
+            # Titular Principal (soporta misma línea o línea siguiente con backticks)
+            m_tit = re.search(
+                r"\*\*Titular Principal[^*]*:\*\*\s*(?:\n\s*)?`([^`\n]+)`",
+                texto,
+                flags=re.I,
+            )
+            if m_tit:
+                perfil["titular_principal"] = m_tit.group(1).strip()
+            else:
+                perfil["titular_principal"] = _campo("Titular Principal")
+
+            # Resumen profesional (si hay párrafo bajo sección 2 o intro en experiencia)
+            m_res = re.search(r"\*Administra[^\n*]+\*", texto)
+            if m_res:
+                perfil["resumen_profesional"] = re.sub(r"\*+", "", m_res.group(0)).strip().rstrip(":")
+            elif perfil["titular_principal"]:
+                perfil["resumen_profesional"] = f"{perfil['titular_principal']}."
+
+            # Experiencias (bloques ### **Empresa**)
+            exps = []
+            sec_exp_m = re.search(r"##\s*3\.\s*Experiencia.*?(?=##\s*4\.|\Z)", texto, flags=re.S | re.I)
+            if sec_exp_m:
+                sec_exp = sec_exp_m.group(0)
+                bloques = re.split(r"(?=^###\s+\*\*)", sec_exp, flags=re.M)
+                for bl in bloques:
+                    m_h = re.match(r"^###\s+\*\*([^*]+)\*\*(.*)", bl.strip())
+                    if not m_h:
+                        continue
+                    titulo_bl = m_h.group(1).strip()
+                    meta_bl = re.sub(r"[*()]", "", m_h.group(2)).strip()
+                    if "experiencia previa" in titulo_bl.lower():
+                        # Parsear sub-roles como experiencias individuales
+                        for m_prev in re.finditer(
+                            r"^\s*-\s+\*\*([^*]+)\*\*\s*—\s*\*([^*]+)\*\s*(?:\n\s+-\s+(.+))?",
+                            bl,
+                            flags=re.M,
+                        ):
+                            cargo_p = m_prev.group(1).strip()
+                            meta_p = [x.strip() for x in m_prev.group(2).split("|")]
+                            emp_p = meta_p[0] if meta_p else "Experiencia"
+                            per_p = meta_p[1] if len(meta_p) > 1 else ""
+                            ub_p = meta_p[2] if len(meta_p) > 2 else ""
+                            bul_p = [m_prev.group(3).strip()] if m_prev.group(3) else []
+                            exps.append({"empresa": emp_p, "cargo": cargo_p, "periodo": per_p, "ubicacion": ub_p, "rubro": "", "bullets": bul_p})
+                        continue
+
+                    m_cargo = re.search(r"\*\*(?:Etapa\s*\d+[^*]*|Rol):\*\*\s*\*{0,2}([^*\n(]+)", bl, flags=re.I)
+                    cargo = m_cargo.group(1).strip().rstrip("* ") if m_cargo else titulo_bl
+                    m_per = re.search(r"\b(20\d{2}\s*[–\-]\s*(?:Presente|Present|20\d{2})|(?:Ene|Feb|Mar|Abr|May|Jun|Jul|Ago|Sep|Oct|Nov|Dic|Jan|Apr|Aug|Dec)[a-z]*\s+20\d{2}[^|)*\n]*)", bl, flags=re.I)
+                    periodo = m_per.group(1).strip() if m_per else ""
+                    bullets = []
+                    for m_b in re.finditer(r"^\s*-\s+\*\*([^*]{8,140})\*\*:?\s*(.*)$", bl, flags=re.M):
+                        b_tit = m_b.group(1).strip().rstrip(":")
+                        if b_tit.lower().startswith(("etapa ", "rol", "versión en", "titular ", "no incluir")):
+                            continue
+                        b_rest = m_b.group(2).strip()
+                        bullets.append(f"{b_tit}: {b_rest}" if b_rest else b_tit)
+                    exps.append({
+                        "empresa": titulo_bl,
+                        "cargo": cargo,
+                        "periodo": periodo,
+                        "ubicacion": "100% Remoto" if "remoto" in bl.lower() else "",
+                        "rubro": meta_bl,
+                        "bullets": bullets[:10],
+                    })
+            if exps:
+                perfil["experiencias"] = exps
+
+            # Educación y Certificaciones
+            m_edu = re.search(r"###\s*Educaci[oó]n(.*?)(?=###|\Z)", texto, flags=re.S | re.I)
+            if m_edu:
+                for m_e in re.finditer(r"^\s*-\s+\*\*([^*]+)\*\*\s*—\s*\*?([^*\n(]+)\*?\s*(?:\(([^)]+)\))?", m_edu.group(1), flags=re.M):
+                    perfil["educacion"].append({
+                        "titulo": m_e.group(1).strip(),
+                        "institucion": m_e.group(2).strip(),
+                        "periodo": (m_e.group(3) or "").strip(),
+                    })
+            m_cert = re.search(r"###\s*Certificaciones[^\n]*(.*?)(?=##|\Z)", texto, flags=re.S | re.I)
+            if m_cert:
+                for m_c in re.finditer(r"^\s*-\s+\*\*([^*]+)\*\*\s*—\s*\*?([^*\n(]+)\*?\s*(?:\(([^)]+)\))?", m_cert.group(1), flags=re.M):
+                    perfil["certificaciones"].append({
+                        "nombre": m_c.group(1).strip(),
+                        "entidad": m_c.group(2).strip(),
+                        "fecha": re.sub(r"\*+", "", (m_c.group(3) or "")).strip(),
+                    })
+
+            # Skills: primero intentar líneas explícitas 🟢/🟡/🔴, luego detectar stack real presente en el perfil
+            for m_sk in re.finditer(r"🟢\s*\*\*[^*]+:\*\*\s*(.+)", texto):
+                perfil["skills"]["avanzado"].extend([s.strip() for s in m_sk.group(1).split(",") if s.strip()])
+            for m_sk in re.finditer(r"🟡\s*\*\*[^*]+:\*\*\s*(.+)", texto):
+                perfil["skills"]["intermedio"].extend([s.strip() for s in m_sk.group(1).split(",") if s.strip()])
+            if not perfil["skills"]["avanzado"]:
+                catalogo_tech = [
+                    "AWS", "FinOps", "AWS Cost Explorer", "Savings Plans", "VPC Endpoints", "IAM",
+                    "AWS Organizations", "IAM Identity Center", "ECS Fargate", "CloudWatch", "CloudTrail",
+                    "GuardDuty", "EventBridge", "SNS", "KMS", "Secrets Manager", "ElastiCache", "RDS", "S3",
+                    "SES", "Athena", "EKS", "Terraform", "Ansible", "Python", "Boto3", "Bash", "SQL",
+                    "Docker", "Linux", "Wazuh", "SIEM", "Bitdefender", "Cloudflare WAF", "incident.io",
+                    "n8n", "LLMs", "PostgreSQL", "Neo4j", "FastAPI", "Git", "CI/CD",
+                ]
+                perfil["skills"]["avanzado"] = [
+                    t for t in catalogo_tech
+                    if re.search(r"(?<![a-z0-9])" + re.escape(t.lower()) + r"(?![a-z0-9])", texto.lower())
+                ][:24]
+
+            # Impact Log limpio extraído directamente de los logros reales en experiencias
+            logros_loaded = []
+            for idx, exp in enumerate(perfil["experiencias"]):
+                for bi, b in enumerate(exp.get("bullets") or [], 1):
+                    titulo_lg = b.split(":", 1)[0][:110].strip()
+                    if titulo_lg.lower().startswith(("titular ", "etapa ", "no incluir", "versión ")):
+                        continue
+                    sks = [
+                        s.lower() for s in perfil["skills"]["avanzado"]
+                        if re.search(r"(?<![a-z0-9])" + re.escape(s.lower()) + r"(?![a-z0-9])", b.lower())
+                    ]
+                    m_met = re.search(r"(~?\$[\d,\.]+(?:\+?\s*USD)?(?:/(?:mes|año|mo|yr))?|\-?\+?\d+%|\~?[\d,]+\s*llamadas)", b, re.I)
+                    logros_loaded.append({
+                        "id": f"logro:{slugify(titulo_lg, f'hist-{idx}-{bi}')}",
+                        "titulo": titulo_lg,
+                        "angulo": _inferir_angulo_texto(b),
+                        "ahorro": m_met.group(1) if m_met else exp.get("empresa", "Logro verificado"),
+                        "skills": sks[:8],
+                        "metricas": b[:180],
+                        "descripcion": b[:260],
+                    })
+            perfil["impact_log"] = logros_loaded[:14]
+            perfil["sintetizado_por"] = "perfil-maestro.md histórico (detectado automáticamente)"
+
+    # 2. Leer perfil/preferencias.md si es real
+    if PREF_MD_PATH.is_file():
+        pref_txt = PREF_MD_PATH.read_text(encoding="utf-8", errors="ignore")
+        _parsear_preferencias_md(pref_txt, perfil["preferencias"])
+
+    if not perfil["preferencias"].get("pais_residencia") and dp.get("pais"):
+        perfil["preferencias"]["pais_residencia"] = dp["pais"]
+
+    # 3. Auto-detectar CV Base ya existente en cvs-generados/base/
+    if CV_BASE_DIR.is_dir():
+        pdfs = sorted(CV_BASE_DIR.glob("*.pdf"), key=lambda p: p.stat().st_mtime, reverse=True)
+        if pdfs:
+            top = pdfs[0]
+            perfil["cv_base"] = {
+                "modo": "historico",
+                "ruta": str(top.relative_to(ROOT).as_posix()),
+                "doc_id": None,
+                "nombre_archivo": top.name,
+            }
+
     return perfil
 
 
@@ -463,7 +832,18 @@ def cargar_perfil_estructurado() -> dict:
         try:
             raw = json.loads(STRUCTURED_PATH.read_text(encoding="utf-8"))
             if isinstance(raw, dict):
-                return _deep_merge(DEFAULT_PERFIL, raw)
+                merged = _deep_merge(DEFAULT_PERFIL, raw)
+                # Si aún no tiene cv_base pero existe uno histórico en cvs-generados/base/, vincularlo
+                if not (merged.get("cv_base") or {}).get("ruta") and CV_BASE_DIR.is_dir():
+                    pdfs = sorted(CV_BASE_DIR.glob("*.pdf"), key=lambda p: p.stat().st_mtime, reverse=True)
+                    if pdfs:
+                        merged["cv_base"] = {
+                            "modo": "historico",
+                            "ruta": str(pdfs[0].relative_to(ROOT).as_posix()),
+                            "doc_id": None,
+                            "nombre_archivo": pdfs[0].name,
+                        }
+                return merged
         except Exception:
             pass
     return _seed_desde_markdown_existente()
@@ -471,10 +851,16 @@ def cargar_perfil_estructurado() -> dict:
 
 def calcular_completitud(perfil: dict, docs: list[dict] | None = None) -> dict:
     docs = docs if docs is not None else _cargar_indice_docs()
+    historicas = detectar_fuentes_historicas()
     dp = perfil.get("datos_personales") or {}
     pref = perfil.get("preferencias") or {}
     checks = {
-        "fuentes": bool(docs or (perfil.get("historia_libre") or "").strip() or (perfil.get("urls_referencia") or [])),
+        "fuentes": bool(
+            docs
+            or historicas
+            or (perfil.get("historia_libre") or "").strip()
+            or (perfil.get("urls_referencia") or [])
+        ),
         "identidad": bool((dp.get("nombre") or "").strip() and (perfil.get("titular_principal") or perfil.get("resumen_profesional"))),
         "preferencias": bool((pref.get("puestos_objetivo") or []) or (pref.get("areas") or [])),
         "experiencia_o_skills": bool(
@@ -485,7 +871,11 @@ def calcular_completitud(perfil: dict, docs: list[dict] | None = None) -> dict:
         "cv_base": bool((perfil.get("cv_base") or {}).get("ruta")),
     }
     score = int(round((sum(1 for v in checks.values() if v) / len(checks)) * 100))
-    return {"porcentaje": score, "checks": checks, "listo_para_match": checks["identidad"] or checks["fuentes"]}
+    return {
+        "porcentaje": score,
+        "checks": checks,
+        "listo_para_match": checks["identidad"] and (checks["fuentes"] or checks["experiencia_o_skills"]),
+    }
 
 
 def guardar_perfil_estructurado(perfil: dict, regenerar_md: bool = True) -> dict:
@@ -720,6 +1110,7 @@ def render_preferencias_md(perfil: dict) -> str:
 # -------------------------------------------------------- AI Synthesis Engine
 def _recopilar_corpus_usuario(perfil: dict) -> str:
     partes: list[str] = []
+    # 1. Documentos subidos en la bóveda
     docs = _cargar_indice_docs()
     for d in docs:
         txt_path = ROOT / d.get("ruta_texto", "")
@@ -730,6 +1121,16 @@ def _recopilar_corpus_usuario(perfil: dict) -> str:
                     f"--- DOCUMENTO [{d.get('categoria', 'otro').upper()}]: {d.get('nombre_original')} ---\n{txt[:9000]}"
                 )
 
+    # 2. Fuentes históricas reales ya existentes en el repositorio
+    if PERFIL_MD_PATH.is_file():
+        txt_p = PERFIL_MD_PATH.read_text(encoding="utf-8", errors="ignore").strip()
+        if txt_p and not _es_plantilla_ejemplo(txt_p):
+            partes.append(f"--- PERFIL MAESTRO HISTÓRICO (perfil/perfil-maestro.md) ---\n{txt_p[:12000]}")
+    if PREF_MD_PATH.is_file():
+        txt_pr = PREF_MD_PATH.read_text(encoding="utf-8", errors="ignore").strip()
+        if txt_pr and not _es_plantilla_ejemplo(txt_pr):
+            partes.append(f"--- PREFERENCIAS HISTÓRICAS (perfil/preferencias.md) ---\n{txt_pr[:6000]}")
+
     for u in perfil.get("urls_referencia") or []:
         if u.get("texto_extraido"):
             partes.append(
@@ -739,7 +1140,7 @@ def _recopilar_corpus_usuario(perfil: dict) -> str:
     if (perfil.get("historia_libre") or "").strip():
         partes.append(f"--- HISTORIA CONTADA POR EL USUARIO ---\n{perfil['historia_libre'].strip()[:8000]}")
 
-    return "\n\n".join(partes)[:28000]
+    return "\n\n".join(partes)[:32000]
 
 
 def _extraccion_heuristica_sin_ia(perfil: dict, corpus: str) -> dict:

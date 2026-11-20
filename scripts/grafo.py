@@ -108,43 +108,34 @@ def _cargar_perfil_y_logros() -> tuple[dict, list[dict], list[str]]:
         except Exception:
             pass
 
-    # Fallback: extraer lo básico de perfil/perfil-maestro.md
+    # Fallback: usar el parser completo de perfil_builder sobre perfil-maestro.md
     if os.path.isfile(PERFIL_MD_PATH):
-        txt = open(PERFIL_MD_PATH, encoding="utf-8", errors="ignore").read()
-        m_nom = re.search(r"\*\*Nombre completo:\*\*\s*`?([^`\n]+)`?", txt, re.I)
-        m_tit = re.search(r"\*\*Titular Principal:\*\*\s*`?([^`\n]+)`?", txt, re.I)
-        nombre = m_nom.group(1).strip() if m_nom else "Usuario"
-        titulo = m_tit.group(1).strip() if m_tit else "Perfil Profesional"
-        skills_found: list[str] = []
-        for m_sk in re.finditer(r"[🟢🟡]\s*\*\*[^*]+:\*\*\s*(.+)", txt):
-            skills_found.extend([s.strip().lower() for s in m_sk.group(1).split(",") if s.strip()])
-        logros_md: list[dict] = []
-        for i, m_b in enumerate(re.finditer(r"^\s*-\s+\*\*([^*]{10,120})\*\*(.*)$", txt, re.M), 1):
-            tit = m_b.group(1).strip().rstrip(":")
-            rest = m_b.group(2).strip(" —-:")
-            if tit.lower() in ("nombre completo", "ubicación base", "email", "teléfono", "linkedin", "github", "titular principal", "rol", "idiomas", "español", "inglés"):
-                continue
-            sks = [s for s in skills_found if len(s) >= 2 and s in f"{tit} {rest}".lower()]
-            logros_md.append({
-                "id": f"logro:{_slug(tit, f'md-{i}')}",
-                "titulo": tit,
-                "angulo": "base",
-                "ahorro": "Logro en Perfil Maestro",
-                "skills": sks,
-                "metricas": rest[:160],
-                "descripcion": f"{tit} {rest}".strip(),
-            })
-        return (
-            {
-                "id": f"perfil:{_slug(nombre, 'usuario')}",
-                "nombre": nombre,
-                "titulo": titulo,
-                "certificaciones": [],
-                "idiomas": [],
-            },
-            logros_md[:15],
-            list(dict.fromkeys(skills_found)),
-        )
+        try:
+            import sys
+            scripts_dir = os.path.dirname(os.path.abspath(__file__))
+            if scripts_dir not in sys.path:
+                sys.path.insert(0, scripts_dir)
+            import perfil_builder
+            data = perfil_builder.cargar_perfil_estructurado()
+            dp = data.get("datos_personales") or {}
+            nombre = (dp.get("nombre") or "Usuario").strip()
+            if nombre:
+                perfil_node = {
+                    "id": f"perfil:{_slug(nombre, 'usuario')}",
+                    "nombre": nombre,
+                    "titulo": (data.get("titular_principal") or "Perfil Profesional").strip(),
+                    "certificaciones": [c.get("nombre") for c in (data.get("certificaciones") or []) if isinstance(c, dict) and c.get("nombre")],
+                    "idiomas": [f"{i.get('idioma')} ({i.get('nivel', '')})".strip() for i in (dp.get("idiomas") or []) if isinstance(i, dict) and i.get("idioma")],
+                }
+                skills_user = [
+                    str(s).strip().lower()
+                    for lvl in ("avanzado", "intermedio")
+                    for s in ((data.get("skills") or {}).get(lvl) or [])
+                    if str(s).strip()
+                ]
+                return perfil_node, data.get("impact_log") or [], list(dict.fromkeys(skills_user))
+        except Exception:
+            pass
 
     return (
         {

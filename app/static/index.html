@@ -301,6 +301,7 @@
                 <h3 class="text-xs font-semibold text-zinc-300">Documentos en tu Bóveda Local</h3>
                 <span id="docs-count" class="text-[11px] font-mono text-zinc-500">0 archivos</span>
               </div>
+              <div id="docs-historicas" class="space-y-1.5"></div>
               <div id="docs-list" class="space-y-2 max-h-64 overflow-y-auto pr-1"></div>
             </div>
           </div>
@@ -1893,7 +1894,25 @@
       // Tab 1: Historia, URLs y Docs
       document.getElementById("perfil-historia").value = p.historia_libre || "";
       const docs = data.documentos || [];
-      document.getElementById("docs-count").textContent = `${docs.length} archivo(s)`;
+      const hist = data.fuentes_historicas || [];
+      document.getElementById("docs-count").textContent = `${docs.length} subido(s) · ${hist.length} histórico(s)`;
+      const histWrap = document.getElementById("docs-historicas");
+      if (histWrap) {
+        histWrap.innerHTML = hist.length
+          ? `<div class="text-[10px] uppercase tracking-wider font-semibold text-emerald-400 pt-1">Reconocido históricamente del repositorio</div>` +
+            hist.map(h => `
+              <div class="bg-emerald-950/25 border border-emerald-500/25 rounded-lg px-3 py-2 flex items-center justify-between gap-2 text-[11px]">
+                <div class="min-w-0">
+                  <div class="font-medium text-emerald-200 truncate">${escHtml(h.nombre)}</div>
+                  <div class="text-[10px] text-zinc-400">${escHtml(h.descripcion)}</div>
+                </div>
+                ${h.tipo === "cv_base_pdf"
+                  ? `<a href="/api/files/${escHtml(h.ruta)}" target="_blank" class="px-2 py-0.5 text-[10px] rounded bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 shrink-0">Ver PDF ↗</a>`
+                  : `<span class="font-mono text-[10px] text-emerald-400 shrink-0">✓ Activo</span>`}
+              </div>
+            `).join("")
+          : "";
+      }
       const cvDocId = p.cv_base?.doc_id;
       document.getElementById("docs-list").innerHTML = docs.length
         ? docs.map(d => `
@@ -1913,7 +1932,7 @@
             ${d.preview ? `<div class="text-[11px] text-zinc-400 line-clamp-2 leading-snug">${escHtml(d.preview)}</div>` : ""}
           </div>
         `).join("")
-        : '<div class="text-xs text-zinc-500 bg-canvas hairline rounded-lg p-3">Todavía no subes documentos. Arrastra tu LinkedIn PDF o tu CV actual a la izquierda.</div>';
+        : (hist.length ? "" : '<div class="text-xs text-zinc-500 bg-canvas hairline rounded-lg p-3">Todavía no subes documentos. Arrastra tu LinkedIn PDF o tu CV actual a la izquierda.</div>');
 
       const urls = p.urls_referencia || [];
       document.getElementById("perfil-urls-list").innerHTML = urls.map(u => `

@@ -115,14 +115,20 @@ Chile (100% Remote / Global Mobility) | Bilingual English (C1) & Spanish (Native
 - **Languages:** English (C1 Advanced — Fluent in live technical & vendor negotiations), Spanish (Native)
 ```
 
-### Paso 3: Exportar a HTML y PDF listo para ATS
+### Paso 3: Exportar a HTML y PDF listo para ATS (1 página vanguardista vía Typst)
 Ejecuta el script de renderizado incluido en este skill para convertir automáticamente el archivo `.md` en `.html` y `.pdf`:
 
 ```bash
 python3 .agents/skills/adaptador-cv/scripts/render_cv.py cvs-generados/YYYY-MM-DD/cv-felipe-vergara-<empresa-slug>-<rol-slug>.md
 ```
 
-Si el PDF falla (sin Chrome), el `.html` basta; repórtalo en el resumen.
+`render_cv.py` usa por defecto el motor **Typst 1-página** (`typst_cv_engine.py`, 100% Unicode ATS-friendly) aplicando automáticamente la arquitectura visual definida por Felipe según el `angulo` del frontmatter:
+- `finops` → `editorial` *(Swiss Split Sidebar · Grafito + Verde Esmeralda)*
+- `ai-automation` → `bento` *(Bento KPI Dashboard + Timeline · Índigo + Cian)*
+- `devsecops` → `editorial` *(Swiss Split Sidebar · Navy Obsidiana + Ámbar AWS)*
+- `secops-siem` → `tech-banner` *(Linear Tech Banner + 2×2 Skill Grid · Grafito + Carmesí)*
+
+*(Puedes sobrescribir con `--layout bento|editorial|tech-banner` o `--engine html` para el fallback clásico. Redacta bullets concisos — 4 a 5 en la etapa actual de Colektia — para mantener el PDF en 1 sola página limpia).*
 
 ### Paso 3b: Material de postulación
 Crea `postulaciones/material/<id-oferta>.md` (también cuando reutilizas un CV existente), en el idioma de la oferta, con la misma regla de veracidad estricta:

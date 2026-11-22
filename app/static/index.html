@@ -638,6 +638,9 @@
           <p class="text-xs text-zinc-400 mt-0.5">Arrastra tarjetas entre columnas para actualizar el estado. Haz clic en una oferta para ver desglose, GraphRAG y CV PDF.</p>
         </div>
         <div class="flex items-center gap-2">
+          <button onclick="verificarLinksVivos()" id="btn-verify-links" class="px-3 py-1.5 text-xs font-medium rounded-lg bg-elevated hover:bg-zinc-800 hairline text-emerald-300" title="Verifica en las APIs oficiales qué vacantes siguen abiertas y archiva las cerradas">
+            ✓ Limpiar Cerradas / 404
+          </button>
           <button onclick="syncAll()" class="px-3 py-1.5 text-xs font-medium rounded-lg bg-elevated hover:bg-zinc-800 hairline text-zinc-200">
             Sincronizar DB
           </button>
@@ -678,6 +681,7 @@
           <option value="devsecops">DevSecOps</option>
           <option value="secops-siem">SecOps / SIEM</option>
           <option value="ai-automation">AI Automation</option>
+          <option value="ai-evaluator">AI Evaluator (Hourly USD)</option>
         </select>
 
         <div class="ml-auto flex items-center gap-2">
@@ -750,6 +754,7 @@
             <span class="px-2 py-0.5 rounded bg-canvas hairline text-emerald-400">Get on Board (CL)</span>
             <span class="px-2 py-0.5 rounded bg-canvas hairline text-emerald-400">Teamtailor (CL)</span>
             <span class="px-2 py-0.5 rounded bg-canvas hairline text-violet-300">Ashby (FinOps)</span>
+            <span class="px-2 py-0.5 rounded bg-canvas hairline text-amber-300">Mercor / micro1 / Outlier / DataAnnotation (AI Eval)</span>
             <span class="px-2 py-0.5 rounded bg-canvas hairline">Greenhouse</span>
             <span class="px-2 py-0.5 rounded bg-canvas hairline">Lever (CL/LatAm)</span>
             <span class="px-2 py-0.5 rounded bg-canvas hairline">Breezy</span>
@@ -770,6 +775,7 @@
                 <option value="devsecops">DevSecOps / AWS</option>
                 <option value="secops-siem">SecOps / IAM / SIEM</option>
                 <option value="ai-automation">AI Automation</option>
+                <option value="ai-evaluator">AI Evaluator / RLHF (Hourly USD)</option>
               </select>
             </div>
             <div>
@@ -1184,6 +1190,37 @@
     </div>
   </aside>
 
+  <!-- Modal Motivo de Descarte -->
+  <div id="descarte-modal" class="hidden fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/75 backdrop-blur-[2px]" onclick="if (event.target === this) cerrarModalDescarte(true)">
+    <div class="w-full max-w-md bg-surface hairline rounded-2xl p-5 shadow-2xl space-y-4">
+      <div class="flex items-start justify-between gap-3">
+        <div>
+          <div class="text-[11px] font-mono uppercase tracking-wider text-rose-400">Descartar oferta</div>
+          <h3 id="descarte-modal-title" class="text-sm font-semibold text-zinc-100 mt-0.5 line-clamp-2">Selecciona el motivo del descarte</h3>
+        </div>
+        <button onclick="cerrarModalDescarte(true)" class="p-1 rounded-lg bg-elevated hover:bg-zinc-800 text-zinc-400 hover:text-white text-xs">✕</button>
+      </div>
+
+      <div id="descarte-presets" class="space-y-1.5"></div>
+
+      <div class="pt-2 hairline-t space-y-2">
+        <label for="descarte-custom" class="block text-[11px] text-zinc-400">Otro motivo (opcional)</label>
+        <div class="flex gap-2">
+          <input id="descarte-custom" type="text" placeholder="Escribe un motivo personalizado..."
+                 onkeydown="if (event.key === 'Enter') { event.preventDefault(); confirmarDescarteCustom(); }"
+                 class="flex-1 bg-canvas hairline rounded-lg px-3 py-1.5 text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-rose-500/60" />
+          <button onclick="confirmarDescarteCustom()" class="px-3 py-1.5 text-xs font-medium rounded-lg bg-rose-950/70 hover:bg-rose-900/80 border border-rose-800/60 text-rose-200 whitespace-nowrap">
+            Descartar
+          </button>
+        </div>
+      </div>
+
+      <div class="flex justify-end pt-1">
+        <button onclick="cerrarModalDescarte(true)" class="px-3 py-1.5 text-xs rounded-lg bg-elevated hover:bg-zinc-800 hairline text-zinc-300">Cancelar</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Toast Notification -->
   <div id="toast" class="hidden fixed bottom-5 right-5 z-50 px-4 py-2.5 rounded-xl bg-elevated hairline text-xs font-medium text-zinc-100 shadow-2xl"></div>
 
@@ -1439,19 +1476,29 @@
       ev.currentTarget.classList.remove("drop-active", "drop-danger");
       const id = ev.dataTransfer.getData("text/plain") || DRAGGED_ID;
       if (!id) return;
+      if (targetEstado === "descartada") {
+        const oferta = OFERTAS.find(x => x.id === id) || { id, empresa: "", cargo: id };
+        abrirModalDescarte(oferta, (motivo) => ejecutarMovimiento(id, { estado: "descartada", motivo, forzar: true }));
+        return;
+      }
       const body = { estado: targetEstado, forzar: true };
-      if (targetEstado === "descartada") body.motivo = "Descartada desde Kanban";
       if (targetEstado === "rechazada") body.nota = "Rechazada por la empresa";
-      toast(targetEstado === "cv_generado" ? "Moviendo y preparando CV PDF..." : `Moviendo a ${targetEstado}...`);
+      await ejecutarMovimiento(id, body);
+    }
+
+    async function ejecutarMovimiento(id, body) {
+      toast(body.estado === "cv_generado" ? "Moviendo y preparando CV PDF..." : `Moviendo a ${body.estado}...`);
       const r = await fetch(`/api/ofertas/${encodeURIComponent(id)}/mover`, {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)
       });
       if (!r.ok) {
         toast("Error: " + await r.text(), "err");
-      } else {
-        toast(`Movida a ${targetEstado}`, "ok");
+        await loadData();
+        return false;
       }
+      toast(body.estado === "descartada" ? "Oferta descartada" : `Movida a ${body.estado}`, "ok");
       await loadData();
+      return true;
     }
 
     function renderArchivo() {
@@ -1657,23 +1704,87 @@
       document.getElementById("drawer").classList.add("hidden");
     }
 
+    const MOTIVOS_DESCARTE = [
+      { label: "No calza con mi perfil / stack", desc: "Tecnologías, métricas o área fuera de foco" },
+      { label: "Ubicación o modalidad no compatible", desc: "US-only, híbrido, presencial o restricción de país" },
+      { label: "Exceso de seniority / experiencia requerida", desc: "Pide más años o nivel Staff / Lead / Manager" },
+      { label: "Oferta cerrada, expirada o enlace roto", desc: "Vacante no disponible o HTTP 404/410" },
+      { label: "Proceso de selección burocrático o lento", desc: "Formulario excesivo o baja agilidad" },
+      { label: "Sueldo bajo o condiciones no convenientes", desc: "Compensación o términos por debajo del mínimo" },
+    ];
+    let DESCARTE_CTX = null;
+
+    function abrirModalDescarte(oferta, onConfirm, onCancel = null) {
+      DESCARTE_CTX = { oferta, onConfirm, onCancel };
+      const titleEl = document.getElementById("descarte-modal-title");
+      titleEl.textContent = oferta?.empresa ? `${oferta.empresa} · ${oferta.cargo || ""}` : "Selecciona el motivo del descarte";
+
+      const presetsEl = document.getElementById("descarte-presets");
+      presetsEl.innerHTML = MOTIVOS_DESCARTE.map((m, idx) => `
+        <button type="button" onclick="confirmarDescartePreset(${idx})"
+                class="w-full text-left px-3.5 py-2.5 rounded-xl bg-canvas hover:bg-rose-950/35 border border-zinc-800 hover:border-rose-700/60 transition group">
+          <div class="text-xs font-medium text-zinc-100 group-hover:text-rose-200">${m.label}</div>
+          <div class="text-[11px] text-zinc-500 group-hover:text-zinc-400 mt-0.5">${m.desc}</div>
+        </button>
+      `).join("");
+
+      const customEl = document.getElementById("descarte-custom");
+      customEl.value = "";
+      document.getElementById("descarte-modal").classList.remove("hidden");
+    }
+
+    function cerrarModalDescarte(cancelled = false) {
+      const ctx = DESCARTE_CTX;
+      DESCARTE_CTX = null;
+      document.getElementById("descarte-modal").classList.add("hidden");
+      if (cancelled && ctx?.onCancel) ctx.onCancel();
+    }
+
+    async function confirmarDescartePreset(idx) {
+      const motivo = MOTIVOS_DESCARTE[idx]?.label;
+      if (!motivo || !DESCARTE_CTX) return;
+      const { onConfirm } = DESCARTE_CTX;
+      cerrarModalDescarte(false);
+      await onConfirm(motivo);
+    }
+
+    async function confirmarDescarteCustom() {
+      const customEl = document.getElementById("descarte-custom");
+      const motivo = (customEl?.value || "").trim();
+      if (!motivo) {
+        customEl?.focus();
+        return toast("Elige una opción o escribe un motivo", "err");
+      }
+      if (!DESCARTE_CTX) return;
+      const { onConfirm } = DESCARTE_CTX;
+      cerrarModalDescarte(false);
+      await onConfirm(motivo);
+    }
+
+    document.addEventListener("keydown", (ev) => {
+      if (ev.key === "Escape" && DESCARTE_CTX) cerrarModalDescarte(true);
+    });
+
     async function moverDesdeDrawer(estado) {
       if (!SELECTED || !estado) return;
-      const body = { estado, forzar: true };
       if (estado === "descartada") {
-        const m = prompt("Motivo de descarte:", "No calza con mis métricas/ubicación");
-        if (!m) return;
-        body.motivo = m;
+        const targetId = SELECTED.id;
+        const prevEstado = SELECTED.estado || "evaluada";
+        abrirModalDescarte(
+          SELECTED,
+          async (motivo) => {
+            const ok = await ejecutarMovimiento(targetId, { estado: "descartada", motivo, forzar: true });
+            if (ok) closeDrawer();
+          },
+          () => {
+            document.getElementById("d-move-select").value = prevEstado;
+          }
+        );
+        return;
       }
+      const body = { estado, forzar: true };
       if (estado === "rechazada") body.nota = "Rechazada por la empresa";
-      toast(estado === "cv_generado" ? "Moviendo y preparando CV PDF..." : `Moviendo a ${estado}...`);
-      const r = await fetch(`/api/ofertas/${encodeURIComponent(SELECTED.id)}/mover`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      if (!r.ok) return toast("Error al mover: " + await r.text(), "err");
-      await loadData();
-      toast(`Movida a ${estado}`, "ok");
+      await ejecutarMovimiento(SELECTED.id, body);
     }
 
     async function generarCvDrawer() {
@@ -1687,15 +1798,11 @@
 
     async function descartarDrawer() {
       if (!SELECTED) return;
-      const motivo = prompt("Motivo de descarte:", "No calza con mis métricas/ubicación");
-      if (!motivo) return;
-      await fetch(`/api/ofertas/${encodeURIComponent(SELECTED.id)}/mover`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ estado: "descartada", motivo, forzar: true }),
+      const targetId = SELECTED.id;
+      abrirModalDescarte(SELECTED, async (motivo) => {
+        const ok = await ejecutarMovimiento(targetId, { estado: "descartada", motivo, forzar: true });
+        if (ok) closeDrawer();
       });
-      closeDrawer();
-      await loadData();
-      toast("Oferta descartada", "ok");
     }
 
     async function analizarUrl() {
@@ -1738,6 +1845,26 @@
       await fetch("/api/sync", { method: "POST" });
       await Promise.all([loadHealth(), loadData()]);
       toast("Bases de datos sincronizadas", "ok");
+    }
+
+    async function verificarLinksVivos() {
+      const btn = document.getElementById("btn-verify-links");
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = "Verificando APIs...";
+      }
+      toast("Consultando APIs oficiales (Mercor, micro1, Ashby, Greenhouse) para descartar vacantes cerradas...");
+      try {
+        const r = await fetch("/api/verificar-links", { method: "POST" }).then(x => x.json());
+        await loadData();
+        const firstLine = (r.output || "").split("\n").find(l => l.includes("Verificados")) || "Verificación completada";
+        toast(firstLine, "ok");
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = "✓ Limpiar Cerradas / 404";
+        }
+      }
     }
 
     async function runPipeline() {
@@ -1852,8 +1979,18 @@
     }
 
     function sincronizarDropdownsAngulos(areas) {
-      if (!areas || !areas.length) return;
-      const opts = areas.map(a => `<option value="${escHtml(a.slug)}">${escHtml(a.nombre)}</option>`).join("");
+      const std = [
+        { slug: "finops", nombre: "Cloud FinOps & AWS Cost" },
+        { slug: "devsecops", nombre: "DevSecOps & AWS Cloud" },
+        { slug: "secops-siem", nombre: "SecOps, SIEM & Cloud Security" },
+        { slug: "ai-automation", nombre: "AI Automation & Python" },
+        { slug: "ai-evaluator", nombre: "AI Evaluator / RLHF (Hourly USD)" },
+      ];
+      const seen = new Set(std.map(x => x.slug));
+      const extra = (areas || []).filter(a => a.slug && !seen.has(a.slug));
+      const allAreas = [...std, ...extra];
+      const opts = allAreas.map(a => `<option value="${escHtml(a.slug)}">${escHtml(a.nombre)}</option>`).join("");
+
       const fAng = document.getElementById("filter-angulo");
       if (fAng) {
         const cur = fAng.value;

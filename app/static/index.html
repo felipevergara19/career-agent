@@ -1717,7 +1717,8 @@
     function abrirModalDescarte(oferta, onConfirm, onCancel = null) {
       DESCARTE_CTX = { oferta, onConfirm, onCancel };
       const titleEl = document.getElementById("descarte-modal-title");
-      titleEl.textContent = oferta?.empresa ? `${oferta.empresa} · ${oferta.cargo || ""}` : "Selecciona el motivo del descarte";
+      const partes = [oferta?.empresa, oferta?.cargo].filter(Boolean);
+      titleEl.textContent = partes.length ? partes.join(" · ") : "Selecciona el motivo del descarte";
 
       const presetsEl = document.getElementById("descarte-presets");
       presetsEl.innerHTML = MOTIVOS_DESCARTE.map((m, idx) => `
@@ -1855,10 +1856,16 @@
       }
       toast("Consultando APIs oficiales (Mercor, micro1, Ashby, Greenhouse) para descartar vacantes cerradas...");
       try {
-        const r = await fetch("/api/verificar-links", { method: "POST" }).then(x => x.json());
+        const res = await fetch("/api/verificar-links", { method: "POST" });
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}: ${await res.text()}`);
+        }
+        const r = await res.json();
         await loadData();
         const firstLine = (r.output || "").split("\n").find(l => l.includes("Verificados")) || "Verificación completada";
         toast(firstLine, "ok");
+      } catch (err) {
+        toast("Error al verificar enlaces: " + err.message, "err");
       } finally {
         if (btn) {
           btn.disabled = false;

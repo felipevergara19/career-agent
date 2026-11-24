@@ -3,7 +3,11 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#09090B" />
   <title>Career Agent — Command Center</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
+  <link rel="shortcut icon" href="/favicon.ico" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -1139,21 +1143,126 @@
     </div>
 
     <!-- Acciones rápidas -->
-    <div class="flex flex-wrap items-center gap-2">
-      <a id="d-url" href="#" target="_blank" class="px-3.5 py-1.5 text-xs font-medium rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white">Postular en Portal ↗</a>
-      <button onclick="generarCvDrawer()" class="px-3.5 py-1.5 text-xs font-medium rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white">Generar CV PDF</button>
-      <a id="d-pdf-link" href="#" target="_blank" class="hidden px-3 py-1.5 text-xs font-medium rounded-lg bg-elevated hover:bg-zinc-800 hairline text-emerald-300">Abrir PDF ↗</a>
-      <select id="d-move-select" onchange="moverDesdeDrawer(this.value)" class="bg-canvas hairline rounded-lg px-2.5 py-1.5 text-xs text-zinc-200">
-        <option value="evaluada">Etapa: Evaluada</option>
-        <option value="cv_generado">Etapa: CV Listo</option>
-        <option value="postulado">Etapa: Postulado</option>
-        <option value="entrevista_hr">Etapa: Entrevista HR</option>
-        <option value="entrevista_tecnica">Etapa: Entrevista Técnica</option>
-        <option value="oferta">Etapa: Oferta</option>
-        <option value="rechazada">Etapa: Rechazada (empresa)</option>
-        <option value="descartada">Etapa: Descartada (nosotros)</option>
-      </select>
-      <button onclick="descartarDrawer()" class="ml-auto px-3 py-1.5 text-xs rounded-lg bg-rose-950/60 hover:bg-rose-900/70 border border-rose-800/60 text-rose-300">Descartar</button>
+    <div class="space-y-2.5">
+      <div class="flex flex-wrap items-center gap-2">
+        <a id="d-url" href="#" target="_blank" class="px-3.5 py-1.5 text-xs font-medium rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white">Postular en Portal ↗</a>
+        <a id="d-pdf-link" href="#" target="_blank" class="hidden px-3 py-1.5 text-xs font-medium rounded-lg bg-elevated hover:bg-zinc-800 hairline text-emerald-300">Abrir PDF ↗</a>
+        <select id="d-move-select" onchange="moverDesdeDrawer(this.value)" class="bg-canvas hairline rounded-lg px-2.5 py-1.5 text-xs text-zinc-200">
+          <option value="evaluada">Etapa: Evaluada</option>
+          <option value="cv_generado">Etapa: CV Listo</option>
+          <option value="postulado">Etapa: Postulado</option>
+          <option value="entrevista_hr">Etapa: Entrevista HR</option>
+          <option value="entrevista_tecnica">Etapa: Entrevista Técnica</option>
+          <option value="oferta">Etapa: Oferta</option>
+          <option value="rechazada">Etapa: Rechazada (empresa)</option>
+          <option value="descartada">Etapa: Descartada (nosotros)</option>
+        </select>
+        <button onclick="descartarDrawer()" class="ml-auto px-3 py-1.5 text-xs rounded-lg bg-rose-950/60 hover:bg-rose-900/70 border border-rose-800/60 text-rose-300">Descartar</button>
+      </div>
+
+      <!-- Controles de generación / recreación de CV (bilingüe ES/EN y cualquier etapa) -->
+      <div class="bg-canvas hairline rounded-xl p-2.5 flex flex-wrap items-center gap-2">
+        <select id="d-cv-idioma" class="bg-surface hairline rounded-lg px-2.5 py-1.5 text-xs text-zinc-200" title="Idioma del CV">
+          <option value="en">English (EN)</option>
+          <option value="es">Español (ES)</option>
+        </select>
+        <select id="d-cv-angulo" class="bg-surface hairline rounded-lg px-2.5 py-1.5 text-xs text-zinc-200" title="Enfoque / Diseño del CV">
+          <option value="finops">FinOps (Editorial)</option>
+          <option value="devsecops">DevSecOps (Editorial)</option>
+          <option value="secops-siem">SecOps / SIEM (Banner)</option>
+          <option value="ai-automation">AI Automation (Bento)</option>
+          <option value="ai-evaluator">AI Evaluator / RLHF (Editorial)</option>
+          <option value="base">General / Base</option>
+        </select>
+        <button id="d-btn-gen-cv" onclick="generarCvDrawer()" class="ml-auto px-3.5 py-1.5 text-xs font-medium rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white">
+          Generar CV PDF
+        </button>
+      </div>
+    </div>
+
+    <!-- 🤖 Asistente de Postulación (Screening Questions & Formulario) -->
+    <div class="bg-canvas border border-indigo-500/35 rounded-xl p-4 space-y-3 shadow-lg">
+      <div class="flex items-center justify-between gap-2">
+        <div class="flex items-center gap-2">
+          <span class="text-base">🤖</span>
+          <div>
+            <div class="text-xs font-semibold text-zinc-100 flex items-center gap-1.5">
+              Asistente de Postulación
+              <span class="text-[9px] font-mono px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">Zero Hallucination</span>
+            </div>
+            <div class="text-[10px] text-zinc-400">Responde preguntas de portales con la verdad estricta de tu Perfil Maestro</div>
+          </div>
+        </div>
+        <button type="button" onclick="toggleAsistentePanel()" id="d-btn-toggle-asistente" class="text-xs text-zinc-400 hover:text-zinc-200 px-2 py-1 rounded bg-elevated hairline">
+          Minimizar
+        </button>
+      </div>
+
+      <div id="d-asistente-body" class="space-y-3">
+        <!-- Preguntas frecuentes (Presets 1-click) -->
+        <div>
+          <div class="text-[10px] font-medium text-zinc-400 mb-1.5">Preguntas frecuentes del portal (click para agregar):</div>
+          <div class="flex flex-wrap gap-1.5">
+            <button type="button" onclick="agregarPresetPregunta('salario')" class="px-2 py-1 text-[11px] rounded bg-elevated hover:bg-zinc-800 hairline text-zinc-300">
+              💰 Pretensión de renta
+            </button>
+            <button type="button" onclick="agregarPresetPregunta('disponibilidad')" class="px-2 py-1 text-[11px] rounded bg-elevated hover:bg-zinc-800 hairline text-zinc-300">
+              ⏱️ Disponibilidad / Preaviso
+            </button>
+            <button type="button" onclick="agregarPresetPregunta('finops')" class="px-2 py-1 text-[11px] rounded bg-elevated hover:bg-zinc-800 hairline text-zinc-300">
+              ☁️ Ahorro AWS & FinOps
+            </button>
+            <button type="button" onclick="agregarPresetPregunta('devsecops')" class="px-2 py-1 text-[11px] rounded bg-elevated hover:bg-zinc-800 hairline text-zinc-300">
+              🛡️ DevSecOps & Wazuh
+            </button>
+            <button type="button" onclick="agregarPresetPregunta('por_que')" class="px-2 py-1 text-[11px] rounded bg-elevated hover:bg-zinc-800 hairline text-zinc-300">
+              🏢 ¿Por qué unirte?
+            </button>
+          </div>
+        </div>
+
+        <!-- Área de texto para ingresar preguntas -->
+        <div class="space-y-1.5">
+          <textarea id="d-preguntas-input" rows="3"
+            placeholder="Pega aquí las preguntas del portal (Greenhouse, Lever, Ashby, Workday, LinkedIn, Get on Board)...&#10;Ejemplo:&#10;1. What is your expected salary?&#10;2. Describe your experience with AWS multi-account spend governance."
+            class="w-full bg-surface hairline rounded-lg p-2.5 text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-indigo-500 font-sans"></textarea>
+          
+          <div class="flex flex-wrap items-center justify-between gap-2 pt-1">
+            <div class="flex items-center gap-2">
+              <select id="d-preguntas-idioma" class="bg-surface hairline rounded-lg px-2 py-1 text-[11px] text-zinc-200" title="Idioma de las respuestas">
+                <option value="auto">🌐 Idioma: Auto (detectar)</option>
+                <option value="en">English (EN)</option>
+                <option value="es">Español (ES)</option>
+              </select>
+              <label class="flex items-center gap-1.5 text-[11px] text-zinc-400 cursor-pointer">
+                <input type="checkbox" id="d-preguntas-guardar" checked class="rounded bg-canvas hairline text-indigo-600 focus:ring-0" />
+                <span>Guardar en material</span>
+              </label>
+            </div>
+            <div class="flex items-center gap-1.5">
+              <button type="button" onclick="limpiarPreguntasAsistente()" class="px-2.5 py-1.5 text-xs text-zinc-400 hover:text-zinc-200">
+                Limpiar
+              </button>
+              <button id="d-btn-responder" type="button" onclick="generarRespuestasAsistente()" class="px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white flex items-center gap-1.5 shadow">
+                <span>✨ Responder con Perfil Real</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Contenedor de respuestas generadas / guardadas -->
+        <div id="d-respuestas-wrap" class="hidden space-y-2 pt-2 hairline-t">
+          <div class="flex items-center justify-between">
+            <div class="text-[11px] font-semibold uppercase tracking-wider text-emerald-400 flex items-center gap-1.5">
+              <span id="d-respuestas-estado-badge">✓ Respuestas Verificadas Listas</span>
+            </div>
+            <button type="button" onclick="copiarTodasLasRespuestas()" class="px-2.5 py-1 text-[11px] rounded bg-elevated hover:bg-zinc-800 hairline text-zinc-200 flex items-center gap-1">
+              📋 Copiar Todo
+            </button>
+          </div>
+          <div id="d-respuestas-lista" class="space-y-2.5 text-xs"></div>
+        </div>
+      </div>
     </div>
 
     <!-- Resumen IA -->
@@ -1677,8 +1786,30 @@
       document.getElementById("d-pdf-link").classList.toggle("hidden", !pdf);
       document.getElementById("d-pdf-wrap").classList.toggle("hidden", !pdf);
       if (pdf) {
-        document.getElementById("d-pdf-link").href = pdf;
-        document.getElementById("d-pdf-frame").src = pdf;
+        const busted = `${pdf}?t=${Date.now()}`;
+        document.getElementById("d-pdf-link").href = busted;
+        document.getElementById("d-pdf-frame").src = busted;
+      }
+
+      // Preseleccionar idioma y ángulo del generador de CV según la oferta/CV actual (siempre modificable)
+      const langSel = document.getElementById("d-cv-idioma");
+      if (langSel) {
+        if (o.cv && o.cv.endsWith("-es.md")) langSel.value = "es";
+        else if (o.cv && o.cv.endsWith("-en.md")) langSel.value = "en";
+        else {
+          const idm = String(o.idioma || "").toLowerCase();
+          langSel.value = (idm.includes("ingl") || idm.includes("english")) ? "en" : "es";
+        }
+      }
+      const angSel = document.getElementById("d-cv-angulo");
+      if (angSel) {
+        const angVal = o.angulo || "base";
+        if ([...angSel.options].some(opt => opt.value === angVal)) angSel.value = angVal;
+        else angSel.value = "base";
+      }
+      const btnCv = document.getElementById("d-btn-gen-cv");
+      if (btnCv) {
+        btnCv.textContent = o.cv ? "Recrear CV PDF" : "Generar CV PDF";
       }
 
       const grafoEl = document.getElementById("d-grafo-logros");
@@ -1696,12 +1827,188 @@
       } else {
         grafoEl.innerHTML = '<div class="text-zinc-500">Sin match directo de logros en el grafo.</div>';
       }
+
+      await cargarMaterialOferta(o.id);
     }
 
     function closeDrawer() {
       SELECTED = null;
       document.getElementById("drawer-backdrop").classList.add("hidden");
       document.getElementById("drawer").classList.add("hidden");
+    }
+
+    // ---- Asistente de Postulación (Screening Questions) ----
+    let ULTIMAS_RESPUESTAS = [];
+
+    function toggleAsistentePanel() {
+      const body = document.getElementById("d-asistente-body");
+      const btn = document.getElementById("d-btn-toggle-asistente");
+      const isHidden = body.classList.toggle("hidden");
+      btn.textContent = isHidden ? "Expandir" : "Minimizar";
+    }
+
+    function agregarPresetPregunta(tipo) {
+      const input = document.getElementById("d-preguntas-input");
+      const presets = {
+        salario: "What are your salary expectations? (¿Cuál es tu pretensión de renta líquida?)",
+        disponibilidad: "What is your notice period or earliest start date? (¿Cuál es tu disponibilidad de ingreso?)",
+        finops: "Describe your experience with AWS multi-account spend governance and FinOps cost optimization.",
+        devsecops: "Describe your hands-on experience with DevSecOps, incident automation, and SIEM / security monitoring.",
+        por_que: "Why are you interested in joining our company in this role?"
+      };
+      const texto = presets[tipo] || "";
+      if (!texto) return;
+      if (input.value.trim()) {
+        input.value = input.value.trim() + "\n" + texto;
+      } else {
+        input.value = texto;
+      }
+      input.focus();
+    }
+
+    function limpiarPreguntasAsistente() {
+      document.getElementById("d-preguntas-input").value = "";
+      document.getElementById("d-respuestas-wrap").classList.add("hidden");
+      document.getElementById("d-respuestas-lista").innerHTML = "";
+      ULTIMAS_RESPUESTAS = [];
+    }
+
+    async function cargarMaterialOferta(ofertaId) {
+      const wrap = document.getElementById("d-respuestas-wrap");
+      const lista = document.getElementById("d-respuestas-lista");
+      const badge = document.getElementById("d-respuestas-estado-badge");
+      if (!wrap || !lista) return;
+
+      wrap.classList.add("hidden");
+      lista.innerHTML = "";
+      ULTIMAS_RESPUESTAS = [];
+
+      try {
+        const res = await fetch(`/api/ofertas/${encodeURIComponent(ofertaId)}/material`).then(r => r.json());
+        if (!res.existe || !res.contenido) return;
+
+        const contenido = res.contenido;
+        if (contenido.includes("## Respuestas a Preguntas del Formulario") || contenido.includes("## Respuestas de Formulario")) {
+          const partes = contenido.split(/## Respuestas (?:a Preguntas )?del Formulario[^\n]*\n/);
+          if (partes.length > 1) {
+            const seccion = partes[1].split(/\n##\s+/)[0];
+            const bloques = seccion.split(/\n###\s+/).filter(b => b.trim());
+            const parsed = [];
+            for (const b of bloques) {
+              const lines = b.trim().split("\n");
+              const titulo = lines[0].replace(/^\d+[\.\)]\s*/, "").trim();
+              const cuerpo = lines.slice(1).join("\n").replace(/^>.*$/gm, "").replace(/^---.*$/gm, "").trim();
+              if (titulo && cuerpo) {
+                parsed.push({
+                  pregunta: titulo,
+                  respuesta: cuerpo,
+                  evidencia_perfil: "Guardado en " + res.path,
+                  datos_clave: []
+                });
+              }
+            }
+            if (parsed.length > 0) {
+              badge.textContent = `✓ Respuestas Previas (${parsed.length}) · ${res.path}`;
+              renderizarRespuestasEnUI(parsed);
+              wrap.classList.remove("hidden");
+            }
+          }
+        }
+      } catch (err) {
+        console.warn("No se pudo cargar material previo:", err);
+      }
+    }
+
+    async function generarRespuestasAsistente() {
+      if (!SELECTED) return toast("Selecciona primero una oferta", "err");
+      const input = document.getElementById("d-preguntas-input");
+      const preguntas = input.value.trim();
+      if (!preguntas) return toast("Pega o escribe al menos una pregunta del portal", "err");
+
+      const idioma = document.getElementById("d-preguntas-idioma").value;
+      const guardar = document.getElementById("d-preguntas-guardar").checked;
+      const btn = document.getElementById("d-btn-responder");
+      const wrap = document.getElementById("d-respuestas-wrap");
+      const badge = document.getElementById("d-respuestas-estado-badge");
+
+      const origText = btn.innerHTML;
+      btn.disabled = true;
+      btn.innerHTML = `<span class="animate-spin inline-block mr-1">⏳</span> Generando con Perfil Real...`;
+
+      try {
+        const resp = await fetch(`/api/ofertas/${encodeURIComponent(SELECTED.id)}/responder-preguntas`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ preguntas, idioma, guardar })
+        });
+        const data = await resp.json();
+        if (!resp.ok || !data.ok) {
+          throw new Error(data.detail || data.error || "Error al generar respuestas");
+        }
+
+        badge.textContent = `✓ Respuestas Verificadas (${data.respuestas.length}) · ${String(data.proveedor_usado || 'OK').toUpperCase()}`;
+        renderizarRespuestasEnUI(data.respuestas);
+        wrap.classList.remove("hidden");
+        toast(data.guardado_en ? "Respuestas generadas y guardadas en material" : "Respuestas generadas con éxito", "ok");
+      } catch (err) {
+        toast("Error: " + err.message, "err");
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = origText;
+      }
+    }
+
+    function renderizarRespuestasEnUI(respuestas) {
+      ULTIMAS_RESPUESTAS = respuestas;
+      const lista = document.getElementById("d-respuestas-lista");
+      if (!lista) return;
+      lista.innerHTML = respuestas.map((r, idx) => {
+        const chips = (r.datos_clave || []).map(d => `<span class="px-1.5 py-0.5 rounded bg-elevated hairline font-mono text-[10px] text-indigo-300">${d}</span>`).join(" ");
+        return `
+          <div class="bg-surface hairline rounded-xl p-3.5 space-y-2 border border-zinc-800 hover:border-zinc-700 transition">
+            <div class="flex items-start justify-between gap-2">
+              <div class="font-medium text-zinc-100 text-[12px] leading-snug">
+                <span class="text-indigo-400 font-mono font-semibold">${idx + 1}.</span> ${r.pregunta}
+              </div>
+              <button type="button" onclick="copiarTextoRespuesta(this, ${idx})" class="px-2.5 py-1 text-[11px] rounded-lg bg-elevated hover:bg-zinc-800 hairline text-zinc-200 flex items-center gap-1 flex-shrink-0 transition">
+                <span>📋 Copiar</span>
+              </button>
+            </div>
+            <div class="text-zinc-300 text-xs leading-relaxed whitespace-pre-wrap bg-canvas hairline rounded-lg p-3 select-all">
+${r.respuesta}
+            </div>
+            ${r.evidencia_perfil ? `
+              <div class="text-[10px] text-zinc-500 pt-1 flex flex-wrap items-center gap-1.5">
+                <span class="text-emerald-400 font-medium">✓ Evidencia:</span> ${r.evidencia_perfil}
+                ${chips ? `<div class="w-full flex flex-wrap gap-1 mt-1">${chips}</div>` : ""}
+              </div>
+            ` : ""}
+          </div>
+        `;
+      }).join("");
+    }
+
+    function copiarTextoRespuesta(btn, idx) {
+      const item = ULTIMAS_RESPUESTAS[idx];
+      if (!item || !item.respuesta) return;
+      navigator.clipboard.writeText(item.respuesta).then(() => {
+        const orig = btn.innerHTML;
+        btn.innerHTML = `<span class="text-emerald-400 font-medium">✓ Copiado!</span>`;
+        btn.classList.add("border-emerald-500/50");
+        setTimeout(() => {
+          btn.innerHTML = orig;
+          btn.classList.remove("border-emerald-500/50");
+        }, 2000);
+        toast(`Respuesta #${idx + 1} copiada al portapapeles`, "ok");
+      });
+    }
+
+    function copiarTodasLasRespuestas() {
+      if (!ULTIMAS_RESPUESTAS || !ULTIMAS_RESPUESTAS.length) return toast("No hay respuestas para copiar", "err");
+      const textoCompleto = ULTIMAS_RESPUESTAS.map((r, idx) => `Pregunta ${idx + 1}: ${r.pregunta}\n\n${r.respuesta}`).join("\n\n---\n\n");
+      navigator.clipboard.writeText(textoCompleto).then(() => {
+        toast("Todas las respuestas copiadas al portapapeles", "ok");
+      });
     }
 
     const MOTIVOS_DESCARTE = [
@@ -1790,11 +2097,29 @@
 
     async function generarCvDrawer() {
       if (!SELECTED) return;
-      toast("Ensamblando CV PDF...");
-      const r = await fetch(`/api/ofertas/${encodeURIComponent(SELECTED.id)}/generar-cv`, { method: "POST" });
-      if (!r.ok) return toast("Error generando CV: " + await r.text(), "err");
-      await loadData();
-      toast("CV PDF generado y listo", "ok");
+      const idioma = document.getElementById("d-cv-idioma")?.value || "en";
+      const angulo = document.getElementById("d-cv-angulo")?.value || SELECTED.angulo || "base";
+      const btn = document.getElementById("d-btn-gen-cv");
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = "Generando...";
+      }
+      toast(`Ensamblando CV PDF (${idioma.toUpperCase()} · ${angulo})...`);
+      try {
+        const r = await fetch(`/api/ofertas/${encodeURIComponent(SELECTED.id)}/generar-cv`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ idioma, angulo }),
+        });
+        if (!r.ok) return toast("Error generando CV: " + await r.text(), "err");
+        await loadData();
+        toast(`CV PDF (${idioma.toUpperCase()}) generado y actualizado`, "ok");
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = SELECTED?.cv ? "Recrear CV PDF" : "Generar CV PDF";
+        }
+      }
     }
 
     async function descartarDrawer() {
@@ -2013,7 +2338,8 @@
       const cvAng = document.getElementById("cv-base-angulo");
       if (cvAng) {
         const cur = cvAng.value;
-        cvAng.innerHTML = `<option value="base">CV General (Base)</option>${opts}`;
+        const stdCv = [{ slug: "base", nombre: "CV General (Base)" }, ...allAreas];
+        cvAng.innerHTML = stdCv.map(a => `<option value="${escHtml(a.slug)}">${escHtml(a.nombre)}</option>`).join("");
         cvAng.value = cur || "base";
       }
     }

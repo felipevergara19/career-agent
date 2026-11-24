@@ -122,9 +122,10 @@ I18N_LABELS: dict[str, dict[str, str]] = {
         "tech_stack": "Tech Stack",
         "core_tech_stack": "Core Tech Stack",
         "core_technical_stack": "Core Technical Stack",
+        "soft_skills": "Soft Skills",
         "certifications": "Certifications",
         "certifications_languages": "Certifications & Languages",
-        "flagship_cert": "FEATURED CERTIFICATION",
+        "flagship_cert": "CERTIFICATION",
         "education": "Education",
         "languages": "Languages",
         "executive_profile": "Executive Profile",
@@ -132,7 +133,7 @@ I18N_LABELS: dict[str, dict[str, str]] = {
         "experience": "Professional Experience",
         "project": "Featured Open-Source Project",
         "project_arch": "Featured Open-Source Architecture",
-        "bottom_sec": "Open-Source Project, Education & Certifications",
+        "bottom_sec": "Education, Certifications & Soft Skills",
         "open_source": "OPEN-SOURCE",
     },
     "es": {
@@ -140,9 +141,10 @@ I18N_LABELS: dict[str, dict[str, str]] = {
         "tech_stack": "Stack Técnico",
         "core_tech_stack": "Stack Técnico",
         "core_technical_stack": "Competencias Técnicas",
+        "soft_skills": "Habilidades Blandas",
         "certifications": "Certificaciones",
         "certifications_languages": "Certificaciones e Idiomas",
-        "flagship_cert": "CERTIFICACIÓN DESTACADA",
+        "flagship_cert": "CERTIFICACIÓN",
         "education": "Educación",
         "languages": "Idiomas",
         "executive_profile": "Perfil Ejecutivo",
@@ -150,7 +152,7 @@ I18N_LABELS: dict[str, dict[str, str]] = {
         "experience": "Experiencia Profesional",
         "project": "Proyecto Open-Source Destacado",
         "project_arch": "Arquitectura Open-Source Destacada",
-        "bottom_sec": "Proyecto Open-Source, Educación y Certificaciones",
+        "bottom_sec": "Educación, Certificaciones y Habilidades Blandas",
         "open_source": "OPEN-SOURCE",
     },
 }
@@ -160,7 +162,7 @@ def typst_escape(text: str) -> str:
     """Escapa texto plano para Typst preservando **negrita**, *cursiva* y `código`."""
     s = str(text or "")
     s = s.replace("\\", "\\\\")
-    for ch in ("#", "$", "@", "<", ">", "~", "_", "[", "]"):
+    for ch in ("#", "$", "@", "<", ">", "~", "_", "[", "]", ";"):
         s = s.replace(ch, f"\\{ch}")
 
     s = re.sub(r"`([^`]+)`", lambda m: f"#raw({typst_str(m.group(1).replace('\\\\', '\\'))})", s)
@@ -189,9 +191,34 @@ def _initials(name: str) -> str:
     return (parts[0][:2] if parts else "CV").upper()
 
 
-def _split_skill_tags(raw: str, max_tags: int = 9) -> list[str]:
-    """Divide una cadena de skills separadas por coma respetando paréntesis."""
+def _safe_trim(text: str, max_len: int) -> str:
+    """Recorta texto solo en límite de palabra para nunca dejar palabras cortadas."""
+    s = re.sub(r"\s+", " ", str(text or "")).strip()
+    if len(s) <= max_len:
+        return s
+    cut = s[:max_len].rsplit(" ", 1)[0].rstrip(" ,;:-·(")
+    return cut if cut else s[:max_len]
+
+
+def _clean_location(raw: str, idioma: str) -> str:
+    """Limpia ubicaciones largas con paréntesis extensos sin cortar palabras."""
+    s = _strip_md_stars(raw).strip()
+    if not s:
+        return ""
+    if len(s) <= 48:
+        return s
+    # Extraer ciudad/país antes del paréntesis largo
+    base = s.split("(", 1)[0].strip(" ,·|-")
+    tz = re.search(r"\b(CLT\s*/\s*EST|EST\s*/\s*CST|CLT|EST|CST|UTC[+-]\d+)\b", s)
+    remote = "100% Remoto" if idioma == "es" else "100% Remote"
+    parts = [p for p in (base, remote if "remot" in s.lower() else "", f"({tz.group(1)})" if tz else "") if p]
+    return " · ".join(parts[:2]) + (f" {parts[2]}" if len(parts) > 2 else "") if parts else _safe_trim(s, 48)
+
+
+def _split_skill_tags(raw: str, max_tags: int = 12) -> list[str]:
+    """Divide una cadena de skills separadas por coma respetando paréntesis, sin truncar palabras ni duplicar."""
     tags: list[str] = []
+    seen: set[str] = set()
     buf: list[str] = []
     depth = 0
     for ch in raw:
@@ -203,14 +230,16 @@ def _split_skill_tags(raw: str, max_tags: int = 9) -> list[str]:
             buf.append(ch)
         elif ch == "," and depth == 0:
             item = _strip_md_stars("".join(buf)).strip(" .;")
-            if item:
-                tags.append(item[:34])
+            key = item.lower()
+            if item and key not in seen:
+                seen.add(key)
+                tags.append(item)
             buf = []
         else:
             buf.append(ch)
     last = _strip_md_stars("".join(buf)).strip(" .;")
-    if last:
-        tags.append(last[:34])
+    if last and last.lower() not in seen:
+        tags.append(last)
     return tags[:max_tags]
 
 
@@ -221,14 +250,14 @@ def _extract_kpis_from_text(
     languages: list[dict[str, Any]],
     idioma: str,
 ) -> list[dict[str, str]]:
-    """Extrae dinámicamente hasta 4 KPIs reales desde métricas presentes en el CV Markdown."""
+    """Extrae hasta 4 KPIs reales solo cuando el layout los requiere, sin cortar palabras."""
     kpis: list[dict[str, str]] = []
     seen_values: set[str] = set()
 
     metric_re = re.compile(
         r"([~≈−\-+]?\$[\d,.]+[kKmM]?\+?(?:/(?:yr|year|año|mo|month|mes))?|"
         r"[~≈−\-+]?\d+(?:[.,]\d+)?%|"
-        r"[~≈]?\d[\d,.]*\+?\s*(?:calls/day|llamadas(?:/día|\s+diarias)?|accounts|cuentas|users|usuarios|tasks|APIs))"
+        r"[~≈]?\d[\d,.]*\+?\s*(?:calls/day|llamadas(?:/día|\s+diarias)?|APIs))"
     )
 
     pool: list[str] = [summary]
@@ -245,31 +274,22 @@ def _extract_kpis_from_text(
         if norm in seen_values or len(val) > 16:
             continue
         seen_values.add(norm)
-        # Contexto corto como etiqueta
         head = clean.split(":", 1)[0] if ":" in clean[:70] else clean
-        label = re.sub(r"\s+", " ", head).strip()[:24]
-        sub = re.sub(r"\s+", " ", clean.replace(val, "")).strip(" :,-·")[:36]
+        label = _safe_trim(head, 24)
+        sub_src = re.sub(r"\s+", " ", clean.split(":", 1)[-1] if ":" in clean[:70] else clean)
+        sub = _safe_trim(sub_src.replace(val, "").strip(" :,-·()"), 34)
         kpis.append({"value": val, "label": label or ("Impact" if idioma == "en" else "Impacto"), "sub": sub})
         if len(kpis) >= 3:
             break
 
-    # Completar con certificación destacada o idioma si faltan tarjetas para llegar a 4
     if len(kpis) < 4 and certifications:
         c0 = certifications[0]
         short = re.search(r"\(([A-Z0-9\-]{2,10})\)", c0["name"])
-        val = short.group(1) if short else c0["name"][:14]
+        val = short.group(1) if short else _safe_trim(c0["name"], 14)
         kpis.append({
             "value": val,
             "label": "Certified" if idioma == "en" else "Certificado",
-            "sub": c0["name"][:34],
-        })
-
-    if len(kpis) < 4 and languages:
-        lg0 = languages[0]
-        kpis.append({
-            "value": lg0.get("level", "")[:14] or lg0.get("name", ""),
-            "label": lg0.get("name", "Language"),
-            "sub": lg0.get("note", "")[:34],
+            "sub": _safe_trim(c0["name"], 34),
         })
 
     return kpis[:4]
@@ -359,7 +379,7 @@ def markdown_cv_to_typst_data(md_text: str, frontmatter: dict[str, Any]) -> dict
         if not m_mail and not m_li and not m_gh and not location:
             raw_loc = hl.split("|")[0].strip()
             if raw_loc:
-                location = raw_loc[:44]
+                location = _clean_location(raw_loc, idioma)
 
     # Parsear secciones ##
     sec_lines: dict[str, list[str]] = {}
@@ -374,6 +394,7 @@ def markdown_cv_to_typst_data(md_text: str, frontmatter: dict[str, Any]) -> dict
 
     summary = ""
     skill_groups: list[dict[str, Any]] = []
+    soft_skills: list[str] = []
     experiences: list[dict[str, Any]] = []
     education: list[dict[str, str]] = []
     certifications: list[dict[str, str]] = []
@@ -384,15 +405,25 @@ def markdown_cv_to_typst_data(md_text: str, frontmatter: dict[str, Any]) -> dict
         if any(k in sec_key for k in ("summary", "resumen", "perfil")):
             non_empty = [l for l in slines if l and l != "---"]
             summary = " ".join(non_empty)
+        elif any(k in sec_key for k in ("soft skill", "habilidades blandas", "competencias blandas")):
+            for l in slines:
+                if l.startswith("- ") or l.startswith("* "):
+                    soft_skills.extend(_split_skill_tags(l[2:].strip(), max_tags=10))
+                elif l and l != "---":
+                    soft_skills.extend(_split_skill_tags(l, max_tags=10))
         elif any(k in sec_key for k in ("skill", "competencia", "stack", "habilidad")):
             for l in slines:
                 if l.startswith("- ") or l.startswith("* "):
                     b = l[2:].strip()
                     m = re.match(r"^\*\*([^*]+?):\*\*\s*(.*)$", b)
                     if m:
-                        skill_groups.append({"label": m.group(1).strip(), "tags": _split_skill_tags(m.group(2), max_tags=9)})
+                        grp_lbl = m.group(1).strip()
+                        if any(k in grp_lbl.lower() for k in ("soft", "blanda", "interpersonal")):
+                            soft_skills.extend(_split_skill_tags(m.group(2), max_tags=10))
+                        else:
+                            skill_groups.append({"label": grp_lbl, "tags": _split_skill_tags(m.group(2), max_tags=11)})
                     else:
-                        skill_groups.append({"label": "Skills", "tags": _split_skill_tags(b, max_tags=9)})
+                        skill_groups.append({"label": "Skills", "tags": _split_skill_tags(b, max_tags=11)})
         elif any(k in sec_key for k in ("experience", "experiencia")):
             cur: dict[str, Any] | None = None
             for l in slines:
@@ -408,7 +439,7 @@ def markdown_cv_to_typst_data(md_text: str, frontmatter: dict[str, Any]) -> dict
                     cur = {
                         "company": company,
                         "position": position or company,
-                        "location": "Remote",
+                        "location": "100% Remoto" if idioma == "es" else "100% Remote",
                         "date": "",
                         "highlights": [],
                     }
@@ -428,10 +459,15 @@ def markdown_cv_to_typst_data(md_text: str, frontmatter: dict[str, Any]) -> dict
             for l in slines:
                 if l.startswith("### ") or (l.startswith("- ") and project is None):
                     m_url = re.search(r"\((https?://[^)]+)\)", l)
+                    clean_proj = _strip_md_stars(re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", l.lstrip("#- ").strip()))
+                    m_date = re.search(r"\(([^)]*\d{4}[^)]*)\)", clean_proj)
+                    p_date = m_date.group(1).strip() if m_date else ""
+                    if m_date:
+                        clean_proj = clean_proj.replace(m_date.group(0), "").strip(" ·-|")
                     project = {
-                        "name": _strip_md_stars(re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", l.lstrip("#- ").strip()))[:65],
+                        "name": clean_proj,
                         "url": m_url.group(1) if m_url else (f"https://github.com/{github}" if github else ""),
-                        "date": "",
+                        "date": p_date,
                         "highlights": [],
                     }
                 elif project is not None and l.startswith("- "):
@@ -444,49 +480,87 @@ def markdown_cv_to_typst_data(md_text: str, frontmatter: dict[str, Any]) -> dict
                 low = b.lower()
                 if low.startswith("**certif"):
                     rest = re.sub(r"^\*\*[^*]+:\*\*\s*", "", b)
-                    for part in re.split(r",\s*(?=\*\*)|\s*\|\s*", rest):
+                    for part in re.split(r"\s*\|\s*|,\s*(?=\*\*)", rest):
                         clean = _strip_md_stars(part).strip(" .")
                         if not clean:
                             continue
-                        m_p = re.match(r"^([^(]+?)(?:\s*\(([^)]+)\))?$", clean)
-                        cname = m_p.group(1).strip() if m_p else clean
-                        issuer = m_p.group(2).strip() if (m_p and m_p.group(2)) else ""
-                        certifications.append({"name": cname, "issuer": issuer, "date": ""})
+                        # Soportar "Nombre — Emisor (Fecha)" o "Nombre (Emisor · Fecha)"
+                        m_dash = re.match(r"^(.+?)\s+[—–]\s+(.+)$", clean)
+                        if m_dash:
+                            cname = m_dash.group(1).strip()
+                            tail = m_dash.group(2).strip()
+                            m_tail = re.match(r"^(.+?)\s*\(([^)]+)\)\s*$", tail)
+                            issuer = m_tail.group(1).strip() if m_tail else tail
+                            cdate = m_tail.group(2).strip() if m_tail else ""
+                        else:
+                            m_p = re.match(r"^(.+?)\s*\(([^()]+)\)\s*$", clean)
+                            if m_p and m_p.group(2).strip() not in ("FOCP", "AWS", "SAA", "C03"):
+                                cname = m_p.group(1).strip()
+                                raw_inner = m_p.group(2).strip()
+                                if "·" in raw_inner:
+                                    issuer, cdate = [x.strip() for x in raw_inner.split("·", 1)]
+                                elif "," in raw_inner:
+                                    issuer, cdate = [x.strip() for x in raw_inner.split(",", 1)]
+                                else:
+                                    issuer, cdate = raw_inner, ""
+                            else:
+                                cname, issuer, cdate = clean, "", ""
+                        cdate = re.sub(r"(?i)certificado\s+obtenido\s*[—–\-]\s*", "", cdate).strip()
+                        certifications.append({"name": cname, "issuer": issuer, "date": cdate})
                 elif low.startswith("**idioma") or low.startswith("**languag"):
                     rest = re.sub(r"^\*\*[^*]+:\*\*\s*", "", b)
-                    for part in re.split(r",\s*(?=\*\*)|·", rest):
-                        clean = _strip_md_stars(part).strip()
+                    for part in re.split(r"\s*\|\s*|\s*·\s*|,\s*", rest):
+                        clean = _strip_md_stars(part).strip(" .")
                         if not clean:
                             continue
                         m_lg = re.match(r"^([^(—–:]+?)(?:\s*\(([^)]+)\)|\s*[:—–]\s*(.+))?$", clean)
                         lg_name = m_lg.group(1).strip() if m_lg else clean
-                        lg_lvl = ((m_lg.group(2) or m_lg.group(3)) or "").strip() if m_lg else ""
-                        pct = 100 if any(w in lg_lvl.lower() for w in ("nativ", "c2")) else 92 if "c1" in lg_lvl.lower() else 80
+                        raw_lvl = ((m_lg.group(2) or m_lg.group(3)) or "").strip() if m_lg else ""
+                        low_lvl = raw_lvl.lower()
+                        if "nativ" in low_lvl:
+                            lg_lvl = "Nativo" if idioma == "es" else "Native"
+                            pct = 100
+                        elif "c2" in low_lvl:
+                            lg_lvl = "C2"
+                            pct = 98
+                        elif "c1" in low_lvl:
+                            lg_lvl = "C1"
+                            pct = 92
+                        elif "b2" in low_lvl:
+                            lg_lvl = "B2"
+                            pct = 82
+                        else:
+                            lg_lvl = _safe_trim(raw_lvl.split("—")[0].split("-")[0].strip(), 18) or ""
+                            pct = 80
                         languages.append({
-                            "name": lg_name[:20],
-                            "level": lg_lvl.split("—")[0].strip()[:18] or lg_name,
+                            "name": lg_name,
+                            "level": lg_lvl,
                             "pct": pct,
-                            "note": lg_lvl[:42],
                         })
                 else:
                     clean = _strip_md_stars(b)
-                    m_ed = re.match(r"^([^—–]+?)\s*[—–]\s*([^(]+?)(?:\s*\(([^)]+)\))?$", clean)
+                    # Soportar "Carrera — Universidad Andrés Bello (UNAB) (2023 – 2026)" sin romper "Inglés–Español"
+                    m_ed = re.match(r"^(.+?)\s+[—–]\s+(.+?)(?:\s*\(([^()]*\d{4}[^()]*)\))?\s*$", clean)
                     if m_ed:
+                        ed_date = (m_ed.group(3) or "").strip()
+                        ed_date = re.sub(r"(?i)titulaci[oó]n:\s*", "", ed_date).strip()
+                        if "|" in ed_date:
+                            ed_date = ed_date.split("|", 1)[0].strip()
                         education.append({
-                            "degree": m_ed.group(1).strip()[:45],
-                            "institution": m_ed.group(2).strip()[:45],
-                            "date": (m_ed.group(3) or "").strip(),
+                            "degree": m_ed.group(1).strip(),
+                            "institution": m_ed.group(2).strip(),
+                            "date": ed_date,
                         })
 
-    # Omitir empleos antiguos secundarios si hay >2 entradas para encajar en 1 página
-    if len(experiences) > 2:
-        experiences = [e for e in experiences if "freelance" not in e["company"].lower()]
+    # Omitir empleos antiguos muy secundarios solo si hay >3 entradas para mantener 1 página balanceada
+    if len(experiences) > 3:
+        experiences = [e for e in experiences if "prosud" not in e["company"].lower()]
 
-    if experiences and len(experiences[0]["highlights"]) > 5:
-        experiences[0]["highlights"] = experiences[0]["highlights"][:5]
+    if experiences and len(experiences[0]["highlights"]) > 8:
+        experiences[0]["highlights"] = experiences[0]["highlights"][:8]
 
-    fm_kpis = frontmatter.get("kpis") if isinstance(frontmatter.get("kpis"), list) else None
-    kpis = fm_kpis or _extract_kpis_from_text(summary, experiences, certifications, languages, idioma)
+    # Sin casillas KPI cuadradas en ningún layout (prioriza experiencia real y limpieza visual)
+    kpis: list[dict[str, str]] = []
 
     return {
         "name": name,
@@ -497,14 +571,15 @@ def markdown_cv_to_typst_data(md_text: str, frontmatter: dict[str, Any]) -> dict
         "linkedin": linkedin,
         "github": github,
         "lang": idioma,
-        "kpis": kpis[:4],
+        "kpis": kpis,
         "summary": summary,
         "skill_groups": skill_groups[:4],
+        "soft_skills": list(dict.fromkeys(soft_skills))[:8],
         "experiences": experiences[:3],
         "project": project,
         "education": education[:3],
         "certifications": certifications[:4],
-        "languages": languages[:2],
+        "languages": languages[:3],
     }
 
 
@@ -571,10 +646,10 @@ def _build_bento_typst(data: dict[str, Any], pal: dict[str, str]) -> str:
     for sg in data.get("skill_groups") or []:
         pills = _render_skill_pills_typst(sg["tags"], style="light")
         skill_groups.append(
-            f"""#block(breakable: false, spacing: 5.5pt)[
-              #text(font: font-display, size: 7.2pt, weight: "bold", fill: dark-bg)[{typst_escape(sg['label'].upper())}]
-              #v(2pt)
-              #set par(leading: 0.65em)
+            f"""#block(breakable: false, spacing: 3.5pt)[
+              #text(font: font-display, size: 6.9pt, weight: "bold", fill: dark-bg)[{typst_escape(sg['label'].upper())}]
+              #v(1.5pt)
+              #set par(leading: 0.58em)
               {pills}
             ]"""
         )
@@ -582,75 +657,79 @@ def _build_bento_typst(data: dict[str, Any], pal: dict[str, str]) -> str:
     cert_section = ""
     if data.get("certifications"):
         cert_cards = []
-        for idx, c in enumerate(data["certifications"]):
-            if idx == 0:
-                sub = f"{typst_escape(c.get('issuer', ''))}{(' · ' + typst_escape(c['date'])) if c.get('date') else ''}".strip(" ·")
-                cert_cards.append(
-                    f"""block(width: 100%, fill: accent-soft, stroke: (left: 2.3pt + accent, rest: 0.55pt + accent-border), radius: 4pt, inset: (x: 6pt, y: 4.5pt), breakable: false)[
-                      #text(size: 6.1pt, weight: "bold", fill: accent)[{typst_escape(lbl['flagship_cert'])}] \\
-                      #text(font: font-display, size: 7.8pt, weight: "bold", fill: dark-bg)[{typst_escape(c['name'])}] \\
-                      #text(size: 6.6pt, fill: muted)[{sub}]
-                    ]"""
-                )
-            else:
-                issuer_txt = f" · {typst_escape(c['issuer'])}" if c.get("issuer") else ""
-                cert_cards.append(
-                    f"""block(width: 100%, fill: white, stroke: 0.5pt + border, radius: 3.5pt, inset: (x: 6pt, y: 3.2pt), breakable: false)[
-                      #text(size: 7.3pt, weight: "bold", fill: text-main)[{typst_escape(c['name'])}]
-                      #text(size: 6.6pt, fill: muted)[{issuer_txt}]
-                    ]"""
-                )
+        for c in data["certifications"]:
+            sub = f"{typst_escape(c.get('issuer', ''))}{(' · ' + typst_escape(c['date'])) if c.get('date') else ''}".strip(" ·")
+            issuer_txt = f" \\ #text(size: 6.2pt, fill: muted)[{sub}]" if sub else ""
+            cert_cards.append(
+                f"""block(width: 100%, fill: white, stroke: (left: 1.8pt + accent-border, rest: 0.5pt + border), radius: 3.5pt, inset: (x: 5.5pt, y: 2.5pt), breakable: false)[
+                  #text(size: 7.0pt, weight: "bold", fill: dark-bg)[{typst_escape(c['name'])}]{issuer_txt}
+                ]"""
+            )
         cert_section = f"""
-    #v(6pt)
+    #v(4pt)
     #block(breakable: false)[
-      #text(font: font-display, size: 8.2pt, weight: "bold", fill: dark-bg, tracking: 0.5pt)[{typst_escape(lbl['certifications'].upper())}]
-      #v(2.5pt)
+      #text(font: font-display, size: 7.8pt, weight: "bold", fill: dark-bg, tracking: 0.5pt)[{typst_escape(lbl['certifications'].upper())}]
+      #v(1.5pt)
       #line(length: 100%, stroke: 0.65pt + accent-border)
-      #v(4pt)
-      #stack(spacing: 3.5pt, {", ".join(cert_cards)})
+      #v(3pt)
+      #stack(spacing: 2.5pt, {", ".join(cert_cards)})
+    ]"""
+
+    soft_section = ""
+    if data.get("soft_skills"):
+        soft_pills = _render_skill_pills_typst(data["soft_skills"], style="light")
+        soft_section = f"""
+    #v(4pt)
+    #block(breakable: false)[
+      #text(font: font-display, size: 7.8pt, weight: "bold", fill: dark-bg, tracking: 0.5pt)[{typst_escape(lbl['soft_skills'].upper())}]
+      #v(1.5pt)
+      #line(length: 100%, stroke: 0.65pt + accent-border)
+      #v(2.5pt)
+      #set par(leading: 0.56em)
+      {soft_pills}
     ]"""
 
     edu_section = ""
     if data.get("education"):
         edu_blocks = [
-            f"""#block(breakable: false, spacing: 4pt)[
-              #text(size: 7.5pt, weight: "bold", fill: dark-bg)[{typst_escape(ed['degree'])}] \\
-              #text(size: 6.8pt, fill: muted)[{typst_escape(ed['institution'])}{(' · ' + typst_escape(ed['date'])) if ed.get('date') else ''}]
+            f"""#block(breakable: false, spacing: 2.8pt)[
+              #text(size: 7.2pt, weight: "bold", fill: dark-bg)[{typst_escape(ed['degree'])}] \\
+              #text(size: 6.5pt, fill: muted)[{typst_escape(ed['institution'])}{(' · ' + typst_escape(ed['date'])) if ed.get('date') else ''}]
             ]"""
             for ed in data["education"]
         ]
         edu_section = f"""
-    #v(6pt)
+    #v(4pt)
     #block(breakable: false)[
-      #text(font: font-display, size: 8.2pt, weight: "bold", fill: dark-bg, tracking: 0.5pt)[{typst_escape(lbl['education'].upper())}]
-      #v(2.5pt)
+      #text(font: font-display, size: 7.8pt, weight: "bold", fill: dark-bg, tracking: 0.5pt)[{typst_escape(lbl['education'].upper())}]
+      #v(1.5pt)
       #line(length: 100%, stroke: 0.65pt + accent-border)
-      #v(4pt)
+      #v(3pt)
       {"".join(edu_blocks)}
     ]"""
 
     lang_section = ""
     if data.get("languages"):
         lang_blocks = [
-            f"""#block(breakable: false, spacing: 4pt)[
+            f"""#block(breakable: false, spacing: 2.8pt)[
               #grid(columns: (1fr, auto),
-                text(size: 7.5pt, weight: "bold", fill: dark-bg)[{typst_escape(lg['name'])}],
-                text(size: 7pt, weight: "bold", fill: accent)[{typst_escape(lg['level'])}]
+                text(size: 7.2pt, weight: "bold", fill: dark-bg)[{typst_escape(lg['name'])}],
+                text(size: 6.8pt, weight: "bold", fill: accent)[{typst_escape(lg['level'])}]
               )
-              #v(1.5pt)
-              #box(width: 100%, height: 3pt, fill: border, radius: 2pt)[
-                #place(left, box(width: {lg.get('pct', 90)}%, height: 3pt, fill: accent, radius: 2pt))
+              #v(1pt)
+              #box(width: 100%, height: 2.5pt, fill: border, radius: 2pt)[
+                #place(left, box(width: {lg.get('pct', 90)}%, height: 2.5pt, fill: accent, radius: 2pt))
               ]
             ]"""
             for lg in data["languages"]
         ]
         lang_section = f"""
-    #v(6pt)
+    #v(4pt)
     #block(breakable: false)[
-      #text(font: font-display, size: 8.2pt, weight: "bold", fill: dark-bg, tracking: 0.5pt)[{typst_escape(lbl['languages'].upper())}]
-      #v(2.5pt)
+      #text(font: font-display, size: 7.8pt, weight: "bold", fill: dark-bg, tracking: 0.5pt)[{typst_escape(lbl['languages'].upper())}]
+      #v(1.5pt)
       #line(length: 100%, stroke: 0.65pt + accent-border)
-      #v(4pt)
+      #v(2.5pt)
       {"".join(lang_blocks)}
     ]"""
 
@@ -776,6 +855,7 @@ def _build_bento_typst(data: dict[str, Any], pal: dict[str, str]) -> str:
       #v(4pt)
       {"".join(skill_groups)}
     ]
+    {soft_section}
     {cert_section}
     {edu_section}
     {lang_section}
@@ -862,21 +942,29 @@ def _build_editorial_typst(data: dict[str, Any], pal: dict[str, str]) -> str:
         )
 
     cert_items = [
-        f"""#block(breakable: false, spacing: 3.5pt)[
-          #text(size: 7.3pt, weight: "bold", fill: {'accent-bright' if idx == 0 else 'white'})[{typst_escape(c['name'])}] \\
-          #text(size: 6.5pt, fill: rgb("#CBD5E1"))[{typst_escape(c.get('issuer', ''))}{(' · ' + typst_escape(c['date'])) if c.get('date') else ''}]
+        f"""#block(breakable: false, spacing: 3.2pt)[
+          #text(size: 7.2pt, weight: "bold", fill: white)[{typst_escape(c['name'])}] \\
+          #text(size: 6.4pt, fill: rgb("#CBD5E1"))[{typst_escape(c.get('issuer', ''))}{(' · ' + typst_escape(c['date'])) if c.get('date') else ''}]
         ]"""
-        for idx, c in enumerate(data.get("certifications") or [])
+        for c in (data.get("certifications") or [])
     ]
+
+    soft_sidebar = ""
+    if data.get("soft_skills"):
+        soft_pills = _render_skill_pills_typst(data["soft_skills"], style="dark")
+        soft_sidebar = f"""
+    #left-sec[{typst_escape(lbl['soft_skills'])}]
+    #set par(leading: 0.64em)
+    {soft_pills}"""
 
     edu_section = ""
     if data.get("education"):
         edu_cols = ", ".join(["1fr"] * len(data["education"]))
         edu_right_items = [
-            f"""block(width: 100%, height: 42pt, fill: surface, stroke: 0.5pt + border, radius: 4pt, inset: (x: 6.5pt, y: 4.5pt), breakable: false)[
-              #text(size: 7.3pt, weight: "bold", fill: dark-bg)[{typst_escape(ed['degree'])}] \\
-              #text(size: 6.6pt, fill: text-main)[{typst_escape(ed['institution'])}] \\
-              #text(size: 6.4pt, fill: accent)[{typst_escape(ed.get('date', ''))}]
+            f"""block(width: 100%, fill: surface, stroke: 0.5pt + border, radius: 4pt, inset: (x: 6.5pt, y: 4.5pt), breakable: false)[
+              #text(size: 7.2pt, weight: "bold", fill: dark-bg)[{typst_escape(ed['degree'])}] \\
+              #text(size: 6.5pt, fill: text-main)[{typst_escape(ed['institution'])}] \\
+              #text(size: 6.4pt, weight: "bold", fill: accent)[{typst_escape(ed.get('date', ''))}]
             ]"""
             for ed in data["education"]
         ]
@@ -885,9 +973,8 @@ def _build_editorial_typst(data: dict[str, Any], pal: dict[str, str]) -> str:
     #grid(columns: ({edu_cols}), column-gutter: 5pt, {", ".join(edu_right_items)})"""
 
     lang_items = [
-        f"""#block(breakable: false, spacing: 3.5pt)[
-          #text(size: 7.4pt, weight: "bold", fill: white)[{typst_escape(lg['name'])}] #text(size: 6.9pt, fill: accent-bright)[· {typst_escape(lg['level'])}] \\
-          #text(size: 6.5pt, fill: rgb("#CBD5E1"))[{typst_escape(lg.get('note', ''))}]
+        f"""#block(breakable: false, spacing: 2.5pt)[
+          #text(size: 7.3pt, weight: "bold", fill: white)[{typst_escape(lg['name'])}] #text(size: 7.0pt, fill: accent-bright)[· {typst_escape(lg['level'])}]
         ]"""
         for lg in data.get("languages") or []
     ]
@@ -966,6 +1053,7 @@ def _build_editorial_typst(data: dict[str, Any], pal: dict[str, str]) -> str:
 
     #left-sec[{typst_escape(lbl['tech_stack'])}]
     {"".join(skill_groups)}
+    {soft_sidebar}
 
     #left-sec[{typst_escape(lbl['certifications'])}]
     {"".join(cert_items)}
@@ -1051,10 +1139,10 @@ def _build_tech_banner_typst(data: dict[str, Any], pal: dict[str, str]) -> str:
 
     cert_lines = "\n".join(
         f"""#block(spacing: 1.8pt)[
-          #text(size: 6.8pt, weight: "bold", fill: {'accent' if idx == 0 else 'dark-bg'})[{typst_escape(c['name'])}]
+          #text(size: 6.8pt, weight: "bold", fill: dark-bg)[{typst_escape(c['name'])}]
           #text(size: 6.2pt, fill: muted)[{(' · ' + typst_escape(c['issuer'])) if c.get('issuer') else ''}{(' (' + typst_escape(c['date']) + ')') if c.get('date') else ''}]
         ]"""
-        for idx, c in enumerate(data.get("certifications") or [])
+        for c in (data.get("certifications") or [])
     )
 
     lang_line = " · ".join(
@@ -1062,6 +1150,7 @@ def _build_tech_banner_typst(data: dict[str, Any], pal: dict[str, str]) -> str:
         for lg in data.get("languages") or []
     )
 
+    soft_pills_tb = _render_skill_pills_typst(data.get("soft_skills") or [], style="light")
     proj = data.get("project")
     if proj and proj.get("highlights"):
         proj_bullets = "\n".join(f"#bullet-item[{typst_escape(b)}]" for b in proj["highlights"])
@@ -1072,19 +1161,19 @@ def _build_tech_banner_typst(data: dict[str, Any], pal: dict[str, str]) -> str:
         )
         p_tag = f"{typst_escape(lbl['open_source'])}{(' · ' + typst_escape(proj['date'].upper())) if proj.get('date') else ''}"
         bottom_grid = f"""#grid(columns: (32%, 31%, 34%), column-gutter: 1.5%,
-  block(width: 100%, height: 82pt, fill: accent-soft, stroke: 0.5pt + accent-border, radius: 4pt, inset: (x: 6.5pt, y: 4.5pt), breakable: false)[
+  block(width: 100%, fill: accent-soft, stroke: 0.5pt + accent-border, radius: 4pt, inset: (x: 6.5pt, y: 4.5pt), breakable: false)[
     #text(font: font-display, size: 6.5pt, weight: "bold", fill: accent, tracking: 0.4pt)[{p_tag}] \\
     #v(1pt)
     {p_title}
     #v(2pt)
     #block(spacing: 1.5pt)[{proj_bullets}]
   ],
-  block(width: 100%, height: 82pt, fill: surface, stroke: 0.5pt + border, radius: 4pt, inset: (x: 6.5pt, y: 4.5pt), breakable: false)[
+  block(width: 100%, fill: surface, stroke: 0.5pt + border, radius: 4pt, inset: (x: 6.5pt, y: 4.5pt), breakable: false)[
     #text(font: font-display, size: 6.5pt, weight: "bold", fill: accent, tracking: 0.4pt)[{typst_escape(lbl['education'].upper())}]
     #v(2pt)
     {edu_lines}
   ],
-  block(width: 100%, height: 82pt, fill: surface, stroke: 0.5pt + border, radius: 4pt, inset: (x: 6.5pt, y: 4.5pt), breakable: false)[
+  block(width: 100%, fill: surface, stroke: 0.5pt + border, radius: 4pt, inset: (x: 6.5pt, y: 4.5pt), breakable: false)[
     #text(font: font-display, size: 6.5pt, weight: "bold", fill: accent, tracking: 0.4pt)[{typst_escape(lbl['certifications_languages'].upper())}]
     #v(2pt)
     {cert_lines}
@@ -1092,6 +1181,29 @@ def _build_tech_banner_typst(data: dict[str, Any], pal: dict[str, str]) -> str:
     #line(length: 100%, stroke: 0.4pt + border)
     #v(2pt)
     #text(size: 6.7pt)[{lang_line}]
+  ]
+)"""
+    elif soft_pills_tb:
+        bottom_grid = f"""#grid(columns: (32%, 36%, 29%), column-gutter: 1.5%,
+  block(width: 100%, fill: surface, stroke: 0.5pt + border, radius: 4pt, inset: (x: 6.5pt, y: 4.5pt), breakable: false)[
+    #text(font: font-display, size: 6.5pt, weight: "bold", fill: accent, tracking: 0.4pt)[{typst_escape(lbl['education'].upper())}]
+    #v(2pt)
+    {edu_lines}
+  ],
+  block(width: 100%, fill: surface, stroke: 0.5pt + border, radius: 4pt, inset: (x: 6.5pt, y: 4.5pt), breakable: false)[
+    #text(font: font-display, size: 6.5pt, weight: "bold", fill: accent, tracking: 0.4pt)[{typst_escape(lbl['certifications_languages'].upper())}]
+    #v(2pt)
+    {cert_lines}
+    #v(2.5pt)
+    #line(length: 100%, stroke: 0.4pt + border)
+    #v(2pt)
+    #text(size: 6.7pt)[{lang_line}]
+  ],
+  block(width: 100%, fill: surface, stroke: 0.5pt + border, radius: 4pt, inset: (x: 6.5pt, y: 4.5pt), breakable: false)[
+    #text(font: font-display, size: 6.5pt, weight: "bold", fill: accent, tracking: 0.4pt)[{typst_escape(lbl['soft_skills'].upper())}]
+    #v(2pt)
+    #set par(leading: 0.56em)
+    {soft_pills_tb}
   ]
 )"""
     else:

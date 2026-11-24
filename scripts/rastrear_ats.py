@@ -42,49 +42,140 @@ CATALOGO_PATH = ROOT / "perfil" / "empresas-target.yaml"
 STRUCTURED_PERFIL_PATH = ROOT / "perfil" / "perfil-estructurado.json"
 HEADERS = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0"}
 
-KEYWORDS_FINOPS = ["finops", "cloud cost", "cost optimization", "cloud financial", r"\bcur\b", "cost transparency", "cloud spend", "savings plans"]
-KEYWORDS_DEVOPS_AWS = ["aws", "cloud engineer", "cloudops", "infrastructure engineer", "devops", "platform engineer", "sre"]
-KEYWORDS_SECOPS = ["secops", "cloud security", "siem", "wazuh", r"\biam\b", "devsecops", "guardduty", "security engineer", "cybersecurity"]
-KEYWORDS_AI_AUTO = ["ai automation", "n8n", "workflow automation", "llm automation", "automation engineer", "ai engineer"]
+# --------------------------------------------------------------- Keywords
+# Términos de ROL: cuentan solo si aparecen en el TÍTULO (señal fuerte de que el puesto es para Felipe).
+TITULO_FINOPS = ["finops", "cloud cost", "cost optimization", "cloud financial", "cloud economics",
+                 "cost engineer", "cost analyst", "costos cloud", "costos en la nube"]
+TITULO_DEVOPS_AWS = ["aws", "cloud engineer", "cloud operations", "cloudops", "cloud analyst", "cloud specialist",
+                     "cloud consultant", "cloud support", "infrastructure engineer", "infra engineer", "devops",
+                     "platform engineer", "sre", "site reliability", "observability", "ingeniero cloud",
+                     "ingeniero devops", "nube", "infraestructura", "cloud"]
+TITULO_SECOPS = ["devsecops", "secops", "cloud security", "security engineer", "security analyst", "soc analyst",
+                 r"\bsoc\b", "siem", "wazuh", "detection", "incident response", "cybersecurity", "cyber security",
+                 "ciberseguridad", "seguridad", "security operations", "iam engineer", "identity"]
+TITULO_AI_AUTO = ["ai automation", "automation engineer", "workflow automation", "n8n", "ai engineer",
+                  "llm engineer", "agentic", "automatizacion", "automatización"]
+TITULO_AI_EVAL = ["ai trainer", "ai tutor", "ai evaluator", "ai rater", "rlhf", "prompt engineer",
+                  "prompt evaluator", "code evaluator", "coding expert", "language expert",
+                  "data annotator", "ai quality", "model evaluator", "llm evaluator", "bilingual spanish"]
 
-ALL_KEYWORDS = KEYWORDS_FINOPS + KEYWORDS_DEVOPS_AWS + KEYWORDS_SECOPS + KEYWORDS_AI_AUTO
+# Términos de STACK: suman si aparecen en la descripción (nunca bastan solos para un título no técnico).
+STACK_KEYWORDS = ["aws", "finops", "cost explorer", r"\bcur\b", "savings plans", "reserved instances", "kubecost",
+                  "terraform", "kubernetes", r"\beks\b", "cloudwatch", "guardduty", "security hub", r"\biam\b",
+                  "wazuh", "siem", "opensearch", "python", "boto3", "lambda", "eventbridge", "n8n", "llm",
+                  "github actions", "devsecops", "incident response", "cloud cost", "cost optimization",
+                  "rlhf", "prompt engineering", "model evaluation", "rubric", "data annotation"]
+
+KEYWORDS_FINOPS = TITULO_FINOPS
+KEYWORDS_DEVOPS_AWS = TITULO_DEVOPS_AWS
+KEYWORDS_SECOPS = TITULO_SECOPS
+KEYWORDS_AI_AUTO = TITULO_AI_AUTO
+KEYWORDS_AI_EVAL = TITULO_AI_EVAL
+ALL_KEYWORDS = TITULO_FINOPS + TITULO_DEVOPS_AWS + TITULO_SECOPS + TITULO_AI_AUTO + TITULO_AI_EVAL
+
+RE_TITULO_TECNICO = re.compile(
+    r"\b(engineer|engineering|analyst|developer|specialist|architect|consultant|administrator|admin|sre|"
+    r"devops|ingenier[oa]|analista|desarrollador[a]?|especialista|arquitect[oa]|consultor[a]?|"
+    r"ai trainer|ai tutor|ai evaluator|ai rater|rlhf|prompt|code evaluator)\b",
+    re.I,
+)
+RE_TITULO_NO_TECNICO = re.compile(
+    r"\b(accountant|accounting|marketing|designer|content|copywriter|writer|talent|recruit\w*|legal|counsel|"
+    r"customer success|account manager|account executive|sales|business development|payroll|people partner|"
+    r"hr\b|human resources|office|assistant|bookkeeper|controller|tax|treasury|translator|teacher|tutor|nurse)\b",
+    re.I,
+)
+RE_SENIOR_ALTO = re.compile(r"\b(senior|sr\.?)\b", re.I)
+RE_JUNIOR_MID = re.compile(r"\b(junior|jr\.?|mid|semi[- ]?senior|ssr|associate|analyst|analista|ii\b|i\b)", re.I)
+RE_ANOS_ALTOS = re.compile(r"\b([5-9]|1[0-9])\s*\+?\s*(years|años|yrs)", re.I)
+RE_REGION_OK = re.compile(r"\b(chile|santiago|latam|latin america|south america|americas|worldwide|anywhere|global|remoto)\b", re.I)
+
+_PREF_CACHE: dict | None = None
 
 
 def cargar_preferencias_usuario() -> dict:
-    """Lee preferencias dinámicas desde perfil/perfil-estructurado.json si existe."""
-    if not STRUCTURED_PERFIL_PATH.is_file():
-        return {}
-    try:
-        data = json.loads(STRUCTURED_PERFIL_PATH.read_text(encoding="utf-8"))
-        return (data.get("preferencias") or {}) if isinstance(data, dict) else {}
-    except Exception:
-        return {}
+    """Preferencias del usuario: perfil/perfil-estructurado.json si existe; si no, se derivan
+    de perfil/preferencias.md vía perfil_builder (antes este fallback no existía y se ignoraban)."""
+    global _PREF_CACHE
+    if _PREF_CACHE is not None:
+        return _PREF_CACHE
+    pref: dict = {}
+    if STRUCTURED_PERFIL_PATH.is_file():
+        try:
+            data = json.loads(STRUCTURED_PERFIL_PATH.read_text(encoding="utf-8"))
+            pref = (data.get("preferencias") or {}) if isinstance(data, dict) else {}
+        except Exception:
+            pref = {}
+    if not pref:
+        try:
+            import perfil_builder
+
+            pref = (perfil_builder.cargar_perfil_estructurado() or {}).get("preferencias") or {}
+        except Exception:
+            pref = {}
+    _PREF_CACHE = pref
+    return pref
 
 
 def obtener_keywords_dinamicas(foco: str = "todos") -> list[str]:
-    pref = cargar_preferencias_usuario()
-    areas = pref.get("areas") or []
-    puestos = pref.get("puestos_objetivo") or []
-    if areas or puestos:
-        if foco and foco != "todos":
-            area = next((a for a in areas if (a.get("slug") or "").lower() == foco.lower()), None)
-            if area and area.get("keywords"):
-                return [str(k).strip() for k in area["keywords"] if str(k).strip()]
-        kws: list[str] = []
-        for a in areas:
-            kws.extend([str(k).strip() for k in (a.get("keywords") or []) if str(k).strip()])
-        kws.extend([str(p).strip() for p in puestos if str(p).strip()])
-        if kws:
-            return list(dict.fromkeys(kws))
-
-    return {
-        "finops": KEYWORDS_FINOPS,
-        "secops": KEYWORDS_SECOPS,
-        "secops-siem": KEYWORDS_SECOPS,
-        "ai": KEYWORDS_AI_AUTO,
-        "ai-automation": KEYWORDS_AI_AUTO,
-        "devsecops": KEYWORDS_DEVOPS_AWS,
+    """Keywords de TÍTULO por foco. Se combinan las del código con las áreas/puestos del perfil."""
+    base = {
+        "finops": TITULO_FINOPS,
+        "secops": TITULO_SECOPS,
+        "secops-siem": TITULO_SECOPS,
+        "ai": TITULO_AI_AUTO,
+        "ai-automation": TITULO_AI_AUTO,
+        "ai-evaluator": TITULO_AI_EVAL,
+        "rlhf": TITULO_AI_EVAL,
+        "devsecops": TITULO_DEVOPS_AWS + ["devsecops", "cloud security"],
     }.get(foco, ALL_KEYWORDS)
+    pref = cargar_preferencias_usuario()
+    extra: list[str] = []
+    for a in pref.get("areas") or []:
+        if foco in ("", "todos") or (a.get("slug") or "").lower() == foco.lower():
+            extra.extend(str(k).strip().lower() for k in (a.get("keywords") or []) if str(k).strip())
+    # Términos genéricos del perfil (python, llm, iam...) se usan como STACK, no como rol de título.
+    extra = [k for k in extra if k not in ("python", "llm", "rag", "boto3", "iam", "cur", "terraform")]
+    return list(dict.fromkeys([*base, *extra]))
+
+
+def _buscar_terminos(terminos: list[str], texto: str) -> list[str]:
+    hits = []
+    for kw in terminos:
+        pattern = kw if kw.startswith(r"\b") else r"\b" + re.escape(kw) + r"\b"
+        if re.search(pattern, texto, re.IGNORECASE):
+            hits.append(kw.replace(r"\b", ""))
+    return hits
+
+
+def pre_puntaje(job: dict, kws_titulo: list[str]) -> tuple[int, list[str], list[str]]:
+    """Puntaje determinista (0 tokens) para ordenar candidatas antes de gastar IA.
+    Devuelve (puntaje, keywords_en_titulo, stack_en_descripcion)."""
+    titulo = job.get("titulo") or ""
+    empresa = (job.get("empresa") or "").lower()
+    desc = (job.get("descripcion") or "")[:4000]
+    if empresa and len(empresa) >= 3:  # que "n8n" no matchee solo por ser el nombre de la empresa
+        desc = re.sub(re.escape(empresa), " ", desc, flags=re.I)
+    t_hits = _buscar_terminos(kws_titulo, titulo)
+    s_hits = _buscar_terminos(STACK_KEYWORDS, desc)
+
+    score = 0
+    score += min(45, 25 * len(t_hits))
+    score += min(30, 4 * len(s_hits))
+    if any(k in titulo.lower() for k in ("finops", "cloud cost", "cost optim")):
+        score += 10  # nicho #1 de Felipe
+    if RE_SENIOR_ALTO.search(titulo):
+        score -= 8
+    elif RE_JUNIOR_MID.search(titulo):
+        score += 6
+    if RE_ANOS_ALTOS.search(desc[:3000]):
+        score -= 8
+    if RE_REGION_OK.search(job.get("ubicacion") or ""):
+        score += 12
+    if job.get("ats") == "getonboard":
+        score += 5
+    return max(0, min(100, score)), t_hits, s_hits
+
 
 RE_EXCLUIR_TITULO = re.compile(
     r"\b(manager|director|vp\b|vice president|head of|chief|principal|staff\b|lead\b|distinguished|"
@@ -98,10 +189,16 @@ RE_HIBRIDO_PRESENCIAL = re.compile(
 RE_SOLO_OTRO_PAIS = re.compile(
     r"\b(us only|usa only|u\.s\. only|united states only|u\.s\.\s*remote|remote\s*[-–—(]?\s*(us|usa|u\.s\.|united states|uk|united kingdom|eu|europe|canada|emea|apac|india|germany|france|spain|australia|brazil|mexico|colombia|argentina|poland|ireland)\)?$|"
     r"must reside in the u\.?s|must be located in the u\.?s|must be based in the u\.?s|"
-    r"authorized to work in the u\.?s|us citizens? only|security clearance|"
+    r"authorized to work in the u\.?s|us citizens? only|usc\s+(and|or|&|/)\s*gc|green card|security clearance|"
     r"eu only|europe only|uk only|united kingdom only|canada only|emea only|apac only|india only|"
     r"germany only|spain only|france only|australia only|brazil only|mexico only|colombia only|"
     r"united states \(remote\)|remote - us\b|remote, us\b|remote \(us\)|remote \(usa\)|remote - uk\b|remote - eu\b|remote - canada\b|remote - emea\b)\b",
+    re.I,
+)
+RE_PAIS_UNICO_EXCLUIDO = re.compile(
+    r"^\s*(united states|usa|u\.s\.a?\.|canada|united kingdom|uk|germany|france|spain|italy|netherlands|poland|"
+    r"ireland|portugal|australia|new zealand|india|singapore|japan|brazil|brasil|mexico|méxico|colombia|argentina|peru|perú|"
+    r"united states,\s*canada|canada,\s*united states|europe|emea|apac)\s*$",
     re.I,
 )
 RE_CIUDAD_SIN_REMOTO = re.compile(
@@ -146,6 +243,7 @@ def descubrir_desde_url(url: str) -> tuple[str | None, str | None]:
         ("greenhouse", r"(?:boards\.greenhouse\.io|job-boards\.greenhouse\.io)/([^/]+)"),
         ("ashby", r"(?:jobs\.ashbyhq\.com|app\.ashbyhq\.com)/([^/]+)"),
         ("lever", r"jobs\.lever\.co/([^/]+)"),
+        ("workable", r"apply\.workable\.com/([^/]+)"),
     ]:
         m = re.search(pattern, url)
         if m:
@@ -341,6 +439,62 @@ def consultar_smartrecruiters(slug: str) -> list[dict]:
         return []
 
 
+def consultar_workable(slug: str) -> list[dict]:
+    """Widget JSON público de Workable (consultoras y tech LatAm/Global)."""
+    url = f"https://apply.workable.com/api/v1/widget/accounts/{slug}"
+    try:
+        data = _get_json(url, timeout=10)
+        emp = data.get("name") or slug.capitalize()
+        jobs = []
+        for j in data.get("jobs", []):
+            is_rem = bool(j.get("telecommuting"))
+            country = j.get("country") or ""
+            city = j.get("city") or ""
+            loc_parts = [p for p in (city, country) if p]
+            loc_txt = ", ".join(loc_parts) or "Remote"
+            ubic = f"Remote ({loc_txt})" if is_rem and loc_parts else ("Remote" if is_rem else loc_txt)
+            jobs.append({
+                "empresa": emp,
+                "portal": "ATS Oficial (Workable)",
+                "ats": "workable",
+                "id": str(j.get("shortcode") or j.get("url") or ""),
+                "titulo": j.get("title") or "",
+                "ubicacion": ubic,
+                "workplace_type": "remote" if is_rem else "",
+                "url": j.get("url") or j.get("shortlink") or "",
+                "descripcion": f"{j.get('title', '')} {j.get('department', '')} {j.get('function', '')} {j.get('experience', '')} {loc_txt}",
+            })
+        return jobs
+    except Exception:
+        return []
+
+
+def consultar_workingnomads() -> list[dict]:
+    """API pública JSON de Working Nomads (remoto global)."""
+    jobs: list[dict] = []
+    try:
+        data = _get_json("https://www.workingnomads.com/api/exposed_jobs/", timeout=12)
+        for j in data if isinstance(data, list) else []:
+            cat = (j.get("category_name") or "").lower()
+            if cat and cat not in ("development", "system administration", "devops", "security", "management"):
+                continue
+            jobs.append({
+                "empresa": j.get("company_name") or "WorkingNomads",
+                "portal": "Working Nomads",
+                "ats": "workingnomads",
+                "id": str(j.get("url") or ""),
+                "titulo": j.get("title") or "",
+                "ubicacion": j.get("location") or "Worldwide",
+                "workplace_type": "remote",
+                "salario": "Sueldo por confirmar",
+                "url": j.get("url") or "",
+                "descripcion": evaluador_ia.strip_html(f"{j.get('tags') or ''} {j.get('description') or ''}")[:9000],
+            })
+    except Exception:
+        pass
+    return jobs
+
+
 def consultar_wwr() -> list[dict]:
     """We Work Remotely RSS feeds (DevOps/SysAdmin y Backend)."""
     feeds = [
@@ -377,15 +531,24 @@ def consultar_wwr() -> list[dict]:
 
 
 def consultar_jobicy() -> list[dict]:
-    """API pública JSON de Jobicy (remoto tech global y LatAm)."""
+    """API pública JSON de Jobicy (remoto tech global, por tema y LatAm)."""
     jobs: list[dict] = []
-    for url in [
+    seen: set[str] = set()
+    urls = [
+        "https://jobicy.com/api/v2/remote-jobs?count=50&tag=devops",
+        "https://jobicy.com/api/v2/remote-jobs?count=50&tag=aws",
+        "https://jobicy.com/api/v2/remote-jobs?count=50&tag=security",
+        "https://jobicy.com/api/v2/remote-jobs?count=50&geo=latam",
         "https://jobicy.com/api/v2/remote-jobs?count=50&industry=dev",
-        "https://jobicy.com/api/v2/remote-jobs?count=30&geo=latam",
-    ]:
+    ]
+    for url in urls:
         try:
             data = _get_json(url, timeout=10)
             for j in data.get("jobs", []):
+                jid = str(j.get("id") or j.get("url") or "")
+                if not jid or jid in seen:
+                    continue
+                seen.add(jid)
                 sal = "Sueldo por confirmar"
                 if j.get("annualSalaryMin") and j.get("annualSalaryMax"):
                     sal = f"${j['annualSalaryMin']} - ${j['annualSalaryMax']} {j.get('salaryCurrency', 'USD')}/yr"
@@ -393,7 +556,7 @@ def consultar_jobicy() -> list[dict]:
                     "empresa": j.get("companyName") or "Jobicy",
                     "portal": "Jobicy",
                     "ats": "jobicy",
-                    "id": str(j.get("id")),
+                    "id": jid,
                     "titulo": j.get("jobTitle") or "",
                     "ubicacion": j.get("jobGeo") or "Anywhere",
                     "workplace_type": "remote",
@@ -410,22 +573,24 @@ def consultar_jobicy() -> list[dict]:
 def consultar_getonboard() -> list[dict]:
     """API pública de Get on Board — excelente fuente para Chile y LatAm 100% remoto."""
     pref = cargar_preferencias_usuario()
-    queries = []
-    for p in (pref.get("puestos_objetivo") or [])[:4]:
-        if str(p).strip():
-            queries.append(str(p).strip())
-    for a in (pref.get("areas") or [])[:3]:
-        if a.get("nombre"):
-            queries.append(str(a["nombre"]).strip())
-    if not queries:
-        queries = ["finops", "aws cloud", "devsecops", "cloud security", "secops", "ai automation"]
-    queries = list(dict.fromkeys(queries))[:6]
+    queries = [
+        "finops",
+        "aws",
+        "devops",
+        "devsecops",
+        "cloud security",
+        "ciberseguridad",
+        "secops",
+        "cloud engineer",
+        "sre",
+        "ai automation",
+    ]
     modalidad_pref = pref.get("modalidad") or "remoto_100"
     seen: set[str] = set()
     jobs: list[dict] = []
     for q in queries:
         try:
-            url = f"https://www.getonbrd.com/api/v0/search/jobs?query={urllib.parse.quote(q)}&per_page=15"
+            url = f"https://www.getonbrd.com/api/v0/search/jobs?query={urllib.parse.quote(q)}&per_page=50"
             data = _get_json(url, timeout=10)
             for item in data.get("data", []):
                 jid = str(item.get("id") or "")
@@ -466,15 +631,28 @@ def consultar_getonboard() -> list[dict]:
 
 def consultar_remotive() -> list[dict]:
     jobs: list[dict] = []
-    for cat in ("devops", "software-dev"):
+    seen: set[str] = set()
+    urls = [
+        "https://remotive.com/api/remote-jobs?category=devops&limit=60",
+        "https://remotive.com/api/remote-jobs?category=software-dev&limit=60",
+        "https://remotive.com/api/remote-jobs?search=finops",
+        "https://remotive.com/api/remote-jobs?search=devsecops",
+        "https://remotive.com/api/remote-jobs?search=aws",
+        "https://remotive.com/api/remote-jobs?search=cloud+security",
+    ]
+    for url in urls:
         try:
-            data = _get_json(f"https://remotive.com/api/remote-jobs?category={cat}&limit=40", timeout=10)
+            data = _get_json(url, timeout=10)
             for j in data.get("jobs", []):
+                jid = str(j.get("id") or j.get("url") or "")
+                if not jid or jid in seen:
+                    continue
+                seen.add(jid)
                 jobs.append({
                     "empresa": j.get("company_name") or "Remotive",
                     "portal": "Remotive",
                     "ats": "remotive",
-                    "id": str(j.get("id")),
+                    "id": jid,
                     "titulo": j.get("title") or "",
                     "ubicacion": j.get("candidate_required_location") or "Worldwide",
                     "workplace_type": "remote",
@@ -489,53 +667,360 @@ def consultar_remotive() -> list[dict]:
 
 def consultar_remoteok() -> list[dict]:
     jobs: list[dict] = []
-    try:
-        data = _get_json("https://remoteok.com/api", timeout=10)
-        for j in data[1:80]:
-            if not isinstance(j, dict) or not j.get("position"):
-                continue
-            sal = ""
-            if j.get("salary_min") and j.get("salary_max"):
-                sal = f"${j['salary_min']:,} - ${j['salary_max']:,} USD/yr"
-            jobs.append({
-                "empresa": j.get("company") or "RemoteOK",
-                "portal": "RemoteOK",
-                "ats": "remoteok",
-                "id": str(j.get("id")),
-                "titulo": j.get("position") or "",
-                "ubicacion": j.get("location") or "Worldwide",
-                "workplace_type": "remote",
-                "salario": sal or "Sueldo por confirmar",
-                "url": j.get("apply_url") or j.get("url") or "",
-                "descripcion": evaluador_ia.strip_html(j.get("description") or "")[:9000],
-            })
-    except Exception:
-        pass
+    seen: set[str] = set()
+    urls = [
+        "https://remoteok.com/api?tag=devops",
+        "https://remoteok.com/api?tag=cloud",
+        "https://remoteok.com/api?tag=security",
+        "https://remoteok.com/api?tag=aws",
+        "https://remoteok.com/api?tag=sysadmin",
+    ]
+    for url in urls:
+        try:
+            data = _get_json(url, timeout=10)
+            for j in data[1:80]:
+                if not isinstance(j, dict) or not j.get("position"):
+                    continue
+                jid = str(j.get("id") or j.get("url") or "")
+                if not jid or jid in seen:
+                    continue
+                seen.add(jid)
+                sal = ""
+                if j.get("salary_min") and j.get("salary_max"):
+                    sal = f"${j['salary_min']:,} - ${j['salary_max']:,} USD/yr"
+                jobs.append({
+                    "empresa": j.get("company") or "RemoteOK",
+                    "portal": "RemoteOK",
+                    "ats": "remoteok",
+                    "id": jid,
+                    "titulo": j.get("position") or "",
+                    "ubicacion": j.get("location") or "Worldwide",
+                    "workplace_type": "remote",
+                    "salario": sal or "Sueldo por confirmar",
+                    "url": j.get("apply_url") or j.get("url") or "",
+                    "descripcion": evaluador_ia.strip_html(j.get("description") or "")[:9000],
+                })
+        except Exception:
+            continue
     return jobs
 
 
 def consultar_himalayas() -> list[dict]:
     jobs: list[dict] = []
+    seen: set[str] = set()
+    queries = ["finops", "aws", "devsecops", "cloud security", "secops", "cloud engineer", "ai automation"]
+    urls = [f"https://himalayas.app/jobs/api/search?q={urllib.parse.quote(q)}" for q in queries]
+    urls.append("https://himalayas.app/jobs/api?limit=50")
+    for url in urls:
+        try:
+            data = _get_json(url, timeout=10)
+            for j in data.get("jobs", []):
+                link = j.get("applicationLink") or ""
+                jid = str(j.get("guid") or link)
+                if not jid or jid in seen:
+                    continue
+                seen.add(jid)
+                locs = j.get("locationRestrictions") or []
+                ubic = ", ".join(locs) if locs else "Worldwide"
+                jobs.append({
+                    "empresa": j.get("companyName") or "Himalayas",
+                    "portal": "Himalayas",
+                    "ats": "himalayas",
+                    "id": jid,
+                    "titulo": j.get("title") or "",
+                    "ubicacion": ubic,
+                    "workplace_type": "remote",
+                    "salario": "Sueldo por confirmar",
+                    "url": link,
+                    "descripcion": evaluador_ia.strip_html(j.get("description") or "")[:9000],
+                })
+        except Exception:
+            continue
+    return jobs
+
+
+def consultar_mercor() -> list[dict]:
+    """API SSR (__NEXT_DATA__) de Mercor (work.mercor.com/explore) — filtra estrictamente:
+    1) status == 'active', disableApplications == False, deletedAt is None
+    2) Elegible desde Chile (CHL / LatAm / Remote global) sin restricción US/EU/UK/India-only."""
+    jobs: list[dict] = []
     try:
-        data = _get_json("https://himalayas.app/jobs/api?limit=50", timeout=10)
-        for j in data.get("jobs", []):
-            locs = j.get("locationRestrictions") or []
-            ubic = ", ".join(locs) if locs else "Worldwide"
+        req = urllib.request.Request("https://work.mercor.com/explore", headers=HEADERS)
+        with urllib.request.urlopen(req, timeout=12) as resp:
+            body = resp.read().decode("utf-8", errors="ignore")
+        m = re.search(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', body, re.S)
+        if not m:
+            return jobs
+        data = json.loads(m.group(1))
+        listings = []
+        for q in (data.get("props", {}).get("pageProps", {}).get("dehydratedState", {}).get("queries") or []):
+            st = (q.get("state") or {}).get("data")
+            if isinstance(st, dict) and isinstance(st.get("listings"), list):
+                listings = st["listings"]
+                break
+
+        for j in listings:
+            if j.get("status") != "active" or j.get("disableApplications") or j.get("deletedAt"):
+                continue
+            rem_slots = j.get("remainingSlots")
+            if rem_slots is not None and isinstance(rem_slots, int) and rem_slots <= 0:
+                continue
+
+            jid = str(j.get("listingId") or "").strip()
+            title = str(j.get("title") or "").strip()
+            if not jid or not title:
+                continue
+            desc = str(j.get("description") or "").strip()
+            loc = str(j.get("location") or "Remote").strip()
+
+            elig = [str(x).upper() for x in (j.get("eligibleLocation") or j.get("eligibleResidenceLocation") or []) if x]
+            inelig = [str(x).upper() for x in (j.get("ineligibleLocation") or j.get("ineligibleResidenceLocation") or []) if x]
+            if "CHL" in inelig or "CL" in inelig:
+                continue
+            if elig and not any(c in ("CHL", "CL", "LATAM", "WORLDWIDE", "GLOBAL") for c in elig):
+                continue
+
+            # Descartar si location o título indica otro país específico (US, UK, India, APAC, Korea, etc.) sin Chile/LatAm
+            loc_low = f"{title} {loc}".lower()
+            if any(
+                bad in loc_low
+                for bad in (
+                    "united states", "us only", "u.s.", "usa", "uk only", "united kingdom",
+                    "canada", "europe", "apac", "india", "japan", "korea", "germany", "france",
+                    "brazilian portuguese", "portuguese", "italian", "dutch", "french", "german",
+                    "arabic", "hindi", "mandarin", "chinese", "thai", "ukrainian", "vietnamese",
+                    "swahili", "greek", "hebrew", "indonesian", "bangla", "polish", "turkish",
+                    "russian", "romanian", "finnish", "danish", "czech", "swedish", "norwegian",
+                    "hungarian", "korean", "japanese", "tagalog", "filipino", "malay",
+                    "spanish (spain)", "spanish (mexico)", "mexican spanish", "spanish (colombia)",
+                    "spanish (peru)", "spanish (argentina)", "spanish (venezuela)", "spanish (us)",
+                )
+            ) and not any(ok in loc_low for ok in ("chile", "latin american spanish", "latam")) and "CHL" not in elig:
+                continue
+
+            # Filtrar por dominios relevantes al perfil de Felipe (Prompts, Spanish/Bilingual, DevOps, Cloud, Security, Python, Data, Generalist)
+            rel_txt = f"{title} {desc[:1200]}".lower()
+            if not any(
+                k in rel_txt
+                for k in (
+                    "spanish", "bilingual", "language", "linguistic", "rubric", "prompt",
+                    "generalist", "devops", "platform", "cloud", "aws", "security", "cyber",
+                    "soc", "sre", "site reliability", "software engineer", "python", "data analysis",
+                    "evaluations", "machine learning", "mlops", "llm", "agent",
+                )
+            ):
+                continue
+            if any(
+                irrel in title.lower()
+                for irrel in (
+                    "mechanical", "civil", "electrical", "chemical", "biolog", "medical",
+                    "physician", "lawyer", "legal", "nursing", "accountant", "finance",
+                    "investment banking", "davinci", "unreal engine", "fruitloops", "blender",
+                    "illustrator", "premiere", "photoshop", "macbook", "voice actor",
+                )
+            ):
+                continue
+
+            rmin = j.get("rateMin")
+            rmax = j.get("rateMax")
+            if rmin and rmax:
+                sal = f"${int(rmin)} USD/hr" if rmin == rmax else f"${int(rmin)} - ${int(rmax)} USD/hr"
+            elif j.get("hourlyPayRate"):
+                sal = f"${j['hourlyPayRate']} USD/hr"
+            else:
+                sal = "Tarifa en USD/hr por proyecto"
+
+            slug = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")
+            url = f"https://work.mercor.com/jobs/{jid}/{slug}"
+            ubic_real = "100% Remoto (Chile elegible verificado: CHL)" if "CHL" in elig else f"100% Remoto Global ({loc})"
+
             jobs.append({
-                "empresa": j.get("companyName") or "Himalayas",
-                "portal": "Himalayas",
-                "ats": "himalayas",
-                "id": str(j.get("guid") or j.get("applicationLink") or ""),
-                "titulo": j.get("title") or "",
-                "ubicacion": ubic,
+                "empresa": "Mercor",
+                "portal": "Mercor API Oficial (Hourly USD)",
+                "ats": "mercor",
+                "id": jid,
+                "titulo": f"{title} (AI Evaluator / RLHF)",
+                "ubicacion": ubic_real,
                 "workplace_type": "remote",
-                "salario": "Sueldo por confirmar",
-                "url": j.get("applicationLink") or "",
-                "descripcion": evaluador_ia.strip_html(j.get("description") or "")[:9000],
+                "salario": sal,
+                "url": url,
+                "descripcion": (
+                    f"Mercor AI Evaluator & RLHF Project: {title} ({sal}, {ubic_real}). "
+                    f"Status: ACTIVE (remainingSlots={rem_slots}). "
+                    f"{desc[:7000]}"
+                ),
             })
     except Exception:
         pass
     return jobs
+
+
+def consultar_micro1() -> list[dict]:
+    """API oficial en vivo de micro1 (prod-api.micro1.ai/api/v1/job/portal) — solo vacantes EXPERT activas
+    y elegibles desde Chile/LatAm."""
+    jobs: list[dict] = []
+    try:
+        all_items: list[dict] = []
+        for page in (1, 2, 3):
+            req = urllib.request.Request(
+                f"https://prod-api.micro1.ai/api/v1/job/portal?page={page}&limit=100&keyword=",
+                data=json.dumps({"action": "get_all_jobs", "filters": {"type": ["EXPERT"]}}).encode("utf-8"),
+                headers={**HEADERS, "Content-Type": "application/json"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                data = json.loads(resp.read().decode("utf-8", errors="ignore"))
+                batch = data.get("data") or []
+                all_items.extend(batch)
+                if len(batch) < 100:
+                    break
+
+        for j in all_items:
+            jid = str(j.get("job_id") or "").strip()
+            title = str(j.get("job_name") or "").strip()
+            apply_url = str(j.get("apply_url") or "").split("?")[0].strip()
+            if not jid or not title or not apply_url:
+                continue
+
+            low_t = title.lower()
+            # Descartar vacantes restringidas a otro país o idioma ajeno
+            if any(
+                bad in low_t
+                for bad in (
+                    "us only", "us-based", "us based", "us/can", "u.s.", "united states",
+                    "canada", "united kingdom", "great britain", "ireland", "germany",
+                    "france", "australia", "japan", "south korea", "india", "philippines",
+                    "south africa", "nigeria", "egypt", "brazil", "portugal", "belgium",
+                    "switzerland", "spain)", "mexico)", "mexico only", "arabic", "french",
+                    "portuguese", "german", "japanese", "korean", "phd", "physician",
+                    "doctor", "oncologist", "lawyer", "legal", "veterans",
+                )
+            ):
+                continue
+
+            skills = [str(s).strip() for s in (j.get("skills") or []) if str(s).strip()]
+            # Exigir keyword relevante en el TÍTULO del puesto en micro1 (evitar médicos/abogados con skill genérico "data")
+            if not any(
+                k in low_t
+                for k in (
+                    "spanish", "latam", "bilingual", "language", "linguistic", "prompt",
+                    "evaluator", "generalist", "python", "devops", "cloud", "aws", "security",
+                    "cyber", "jailbreak", "red teaming", "software", "backend", "full-stack",
+                    "data analyst", "data scientist", "data engineer", "sql", "linux",
+                    "ai trainer", "llm", "machine learning", "simulation",
+                )
+            ):
+                continue
+            if any(
+                irrel in low_t
+                for irrel in (
+                    "photographer", "sony", "robotics", "drone", "maritime", "imagery",
+                    "federal", "civilian intelligence", "national security", "nuclear",
+                    "aerodynamics", "mechanical", "biology", "chemistry", "physics",
+                    "earth &", "social work", "travel operations", "shopper", "category manager",
+                    "retail", "food delivery", "video data entry", "wearing", "cardiolog",
+                    "medical", "clinical", "nurse", "radiolog", "neurolog", "pathology",
+                    "life science", "life sciences", "physical science", "physical sciences",
+                    "mathematics", "math", "statistics", "kaggle", "biomedical", "genomics",
+                    "biotech", "neuroscience", "materials science",
+                )
+            ):
+                continue
+            rate = j.get("ideal_hourly_rate") or {}
+            rmin, rmax = rate.get("min"), rate.get("max")
+            if rmin and rmax:
+                sal = f"${rmin} - ${rmax} USD/hr"
+            else:
+                sal = "Tarifa en USD/hr"
+
+            jobs.append({
+                "empresa": "micro1",
+                "portal": "micro1 API Oficial (Hourly USD)",
+                "ats": "micro1",
+                "id": jid,
+                "titulo": f"{title} (AI Evaluator / RLHF)",
+                "ubicacion": "100% Remoto Global (Chile / LatAm)",
+                "workplace_type": "remote",
+                "salario": sal,
+                "url": apply_url,
+                "descripcion": (
+                    f"micro1 Remote AI Evaluator / Expert Role: {title} ({sal}). "
+                    f"Required skills: {', '.join(skills)}. "
+                    f" Posted: {j.get('date_posted') or 'Active'}. "
+                    f"AI training, prompt & response evaluation, RLHF rubric grading."
+                ),
+            })
+    except Exception:
+        pass
+    return jobs
+
+
+def consultar_plataformas_ai_evaluator() -> list[dict]:
+    """Combina las APIs en vivo de Mercor y micro1 con los portales permanentes verificados
+    (DataAnnotation, Outlier, Mindrift, Alignerr, Turing)."""
+    permanentes = [
+        {
+            "empresa": "DataAnnotation",
+            "portal": "DataAnnotation (Hourly USD)",
+            "ats": "dataannotation",
+            "id": "dataannotation-bilingual-python",
+            "titulo": "AI Evaluator & Prompt/Code Trainer (Bilingual Spanish-English & Python Track)",
+            "ubicacion": "100% Remoto Global (Chile / LatAm)",
+            "workplace_type": "remote",
+            "salario": "$20 - $40+ USD/hora",
+            "url": "https://www.dataannotation.tech/",
+            "descripcion": "Side-by-side prompt evaluation, RLHF model comparison, bilingual English-Spanish translation and Python coding AI trainer.",
+        },
+        {
+            "empresa": "Outlier.ai (Scale AI)",
+            "portal": "Outlier (Hourly USD)",
+            "ats": "outlier",
+            "id": "outlier-latam-trainer",
+            "titulo": "AI Trainer — Bilingual Spanish (Chile/LatAm) & Coding/Prompt Evaluator",
+            "ubicacion": "100% Remoto (Chile / LatAm)",
+            "workplace_type": "remote",
+            "salario": "$15 - $35 USD/hora",
+            "url": "https://app.outlier.ai/en/expert/jobs",
+            "descripcion": "RLHF AI Trainer for Spanish (Chile/LatAm) prompt evaluation, side-by-side response comparison, Python, SQL and Bash.",
+        },
+        {
+            "empresa": "Mindrift (by Toloka AI)",
+            "portal": "Mindrift (Hourly USD)",
+            "ats": "mindrift",
+            "id": "mindrift-ai-tutor",
+            "titulo": "Freelance AI Tutor — Prompt Editor & Technical/Bilingual Evaluator",
+            "ubicacion": "100% Remoto Global (Chile / LatAm)",
+            "workplace_type": "remote",
+            "salario": "$15 - $40 USD/hora",
+            "url": "https://mindrift.ai/apply",
+            "descripcion": "AI Tutor and Prompt Editor evaluating LLM responses against rubrics, fact-checking, bilingual EN/ES and IT domain expertise.",
+        },
+        {
+            "empresa": "Turing",
+            "portal": "Turing (Hourly USD)",
+            "ats": "turing-llm",
+            "id": "turing-llm-trainer",
+            "titulo": "LLM Trainer & RLHF Evaluator (Instruction Quality, Bilingual & Python Track)",
+            "ubicacion": "100% Remoto (Chile / LatAm)",
+            "workplace_type": "remote",
+            "salario": "$20 - $45 USD/hora",
+            "url": "https://www.turing.com/jobs",
+            "descripcion": "LLM Trainer and RLHF Evaluator focusing on instruction following quality, multi-turn prompt evaluation, hallucination detection and Python.",
+        },
+        {
+            "empresa": "Alignerr (by Labelbox)",
+            "portal": "Alignerr (Hourly USD)",
+            "ats": "alignerr",
+            "id": "alignerr-spanish-coding-trainer",
+            "titulo": "AI Trainer — Bilingual Spanish Evaluator & Coding/Cloud Domain Expert",
+            "ubicacion": "100% Remoto Global (Chile / LatAm)",
+            "workplace_type": "remote",
+            "salario": "$20 - $60+ USD/hora",
+            "url": "https://www.alignerr.com/jobs",
+            "descripcion": "Labelbox Alignerr RLHF AI Evaluator and Trainer for bilingual Spanish-English localization, prompt engineering, Python, DevOps and cloud.",
+        },
+    ]
+    return consultar_mercor() + consultar_micro1() + permanentes
 
 
 # -------------------------------------------------------- Pre-filtro estricto
@@ -553,6 +1038,10 @@ def pasa_filtros_duros(job: dict) -> tuple[bool, str]:
     ubic = job.get("ubicacion") or ""
     wp = (job.get("workplace_type") or "").lower()
     desc_head = (job.get("descripcion") or "")[:2500]
+
+    # 0. Descartar roles claramente no técnicos (Accountant, Marketing, Sales, Talent Pool, etc.)
+    if RE_TITULO_NO_TECNICO.search(titulo) and not RE_TITULO_TECNICO.search(titulo):
+        return False, "rol no técnico"
 
     # 1. Descartar Managers / Directors / Staff / Principal según perfil del usuario
     if solo_ic and sen_obj in ("junior", "mid") and RE_EXCLUIR_TITULO.search(titulo):
@@ -572,9 +1061,13 @@ def pasa_filtros_duros(job: dict) -> tuple[bool, str]:
             return False, f"no es 100% remoto ({ubic or wp})"
 
     # 3. Restricciones explícitas de otros países (respetando país/regiones del usuario)
-    if RE_SOLO_OTRO_PAIS.search(ubic) or RE_SOLO_OTRO_PAIS.search(desc_head):
+    if RE_PAIS_UNICO_EXCLUIDO.match(ubic) or RE_SOLO_OTRO_PAIS.search(f"{titulo} {ubic}") or RE_SOLO_OTRO_PAIS.search(desc_head):
+        hay_restriccion_dura = bool(RE_SOLO_OTRO_PAIS.search(f"{titulo} {desc_head}"))
+        menciona_chile_latam = bool(re.search(r"\b(chile|latam|latin america)\b", f"{ubic} {desc_head[:1200]}", re.I))
+        if hay_restriccion_dura and not menciona_chile_latam:
+            return False, f"restringido fuera de tu región ({ubic})"
         user_allowed = bool(pais and pais in f"{ubic} {desc_head[:1200]}".lower()) or any(
-            r in ubic.lower() for r in regiones if len(r) >= 3
+            r in ubic.lower() for r in regiones if len(r) >= 3 and r not in ("remote", "worldwide", "global")
         )
         if not user_allowed and not re.search(r"\b(chile|latam|latin america|worldwide|anywhere)\b", ubic, re.I):
             return False, f"restringido fuera de tu región ({ubic})"
@@ -606,25 +1099,116 @@ def filtrar_trabajos(jobs: list[dict], keywords_filtro: list[str] | None = None)
             continue
         seen_urls.add(url)
 
-        texto_kw = f"{j.get('titulo', '')} {(j.get('descripcion') or '')[:1200]}".lower()
-        matched_kw = []
-        for kw in keywords_filtro:
-            pattern = kw if kw.startswith(r"\b") else r"\b" + re.escape(kw) + r"\b"
-            if re.search(pattern, texto_kw, re.IGNORECASE):
-                matched_kw.append(kw.replace(r"\b", ""))
-        if not matched_kw:
-            stats["sin_keywords"] += 1
-            continue
-
         ok, motivo = pasa_filtros_duros(j)
         if not ok:
             stats["descartadas_ubicacion_o_rol"] += 1
             continue
 
-        j["keywords_matched"] = matched_kw[:10]
+        score, t_hits, s_hits = pre_puntaje(j, keywords_filtro)
+        titulo = j.get("titulo") or ""
+        es_tec = bool(RE_TITULO_TECNICO.search(titulo))
+
+        # Exigir señal real: match en título, o título técnico + al menos 2 tecnologías del stack en descripción
+        if not t_hits and not (es_tec and len(s_hits) >= 2):
+            stats["sin_keywords"] += 1
+            continue
+
+        j["pre_score"] = score
+        j["keywords_matched"] = list(dict.fromkeys(t_hits + s_hits))[:10]
         coincidencias.append(j)
 
+    coincidencias.sort(key=lambda x: x.get("pre_score", 0), reverse=True)
     return coincidencias, stats
+
+
+def verificar_disponibilidad_url(job: dict) -> tuple[bool, str]:
+    """Verifica en vivo (HTTP / API) que la oferta siga disponible y aceptando postulaciones
+    antes de evaluarla con IA o crear su ficha."""
+    url = str(job.get("url") or "").strip()
+    if not url.startswith("http"):
+        return False, "URL inválida"
+
+    # Si viene recién descargada de una API oficial en vivo (Greenhouse, Ashby, Lever, Mercor API, micro1 API, GetOnBoard API),
+    # ya sabemos que existe en el feed activo; solo validamos portales agregadores o páginas individuales si es necesario.
+    ats = (job.get("ats") or "").lower()
+    if ats in ("greenhouse", "ashby", "lever", "mercor", "micro1", "getonboard", "teamtailor", "breezy", "smartrecruiters", "workable"):
+        return True, "API oficial activa"
+
+    re_cerrada = re.compile(
+        r"(no longer accepting|no longer available|job (not found|closed|expired|has been filled)|"
+        r"position has been filled|this (job|position|listing|opportunity) is (closed|no longer)|"
+        r"applications? (are |is )?closed|esta oferta (ha finalizado|ya no está disponible|fue cerrada)|"
+        r"el aviso ya no se encuentra activo)",
+        re.I,
+    )
+    try:
+        req = urllib.request.Request(url, headers=HEADERS)
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            if resp.status >= 400:
+                return False, f"HTTP {resp.status}"
+            body = resp.read(32000).decode("utf-8", errors="ignore")
+            m = re_cerrada.search(body)
+            if m:
+                return False, f"Aviso cerrado ({m.group(0)})"
+            return True, f"HTTP {resp.status}"
+    except urllib.error.HTTPError as e:
+        if e.code in (404, 410):
+            return False, f"HTTP {e.code} (No encontrada)"
+        # 403/429 suele ser Cloudflare en portales válidos
+        return True, f"HTTP {e.code}"
+    except Exception as e:
+        return False, f"Error de conexión ({str(e)[:40]})"
+
+
+def limpiar_url_dedup(url: str) -> str:
+    if not url:
+        return ""
+    try:
+        u = urllib.parse.urlparse(url)
+        return f"{u.netloc.lower()}{u.path.rstrip('/')}"
+    except Exception:
+        return url.strip().lower().rstrip("/")
+
+
+def normalizar_slug(texto: str) -> str:
+    t = (texto or "").lower()
+    return re.sub(r"[^a-z0-9]", "", t)
+
+
+def cargar_indice_existentes() -> tuple[set[str], set[tuple[str, str]]]:
+    """Carga todas las ofertas existentes del repo en memoria para deduplicar
+    por URL limpia y por tupla (empresa, cargo) a 0 tokens y sin subprocesos."""
+    urls = set()
+    tuplas = set()
+    try:
+        import estado
+        ofertas, _ = estado.cargar_ofertas()
+        for o in ofertas:
+            u = str(o.get("url") or "").strip()
+            if u:
+                urls.add(limpiar_url_dedup(u))
+                urls.add(u.lower().rstrip("/"))
+            emp = normalizar_slug(str(o.get("empresa") or ""))
+            car = normalizar_slug(str(o.get("cargo") or ""))
+            if emp and car:
+                tuplas.add((emp, car))
+    except Exception:
+        pass
+    return urls, tuplas
+
+
+def ya_existe_oferta(job: dict, urls_existentes: set[str], tuplas_existentes: set[tuple[str, str]]) -> tuple[bool, str]:
+    url = str(job.get("url") or "").strip()
+    u_clean = limpiar_url_dedup(url)
+    if u_clean in urls_existentes or url.lower().rstrip("/") in urls_existentes:
+        return True, "URL ya registrada"
+
+    emp = normalizar_slug(str(job.get("empresa") or ""))
+    car = normalizar_slug(str(job.get("titulo") or ""))
+    if emp and car and (emp, car) in tuplas_existentes:
+        return True, f"vacante de '{job.get('empresa')}' para '{job.get('titulo')}' ya registrada previamente"
+
+    return False, ""
 
 
 def ya_existe(url: str) -> bool:
@@ -650,9 +1234,10 @@ def main() -> None:
     parser.add_argument("--descubrir-url", type=str)
     parser.add_argument("--empresa", type=str)
     parser.add_argument("--solo-ats", action="store_true", help="Omitir portales remotos públicos.")
-    parser.add_argument("--crear-ofertas", action="store_true", help="Evaluar y crear fichas en ofertas/<hoy>/.")
+    parser.add_argument("--crear-ofertas", action="store_true", help="Evaluar con IA y crear fichas en ofertas/<hoy>/.")
+    parser.add_argument("--evaluar-ia", action="store_true", help="Evaluar con IA sin crear fichas (por defecto --buscar gasta 0 tokens).")
     parser.add_argument("--guardar-descartadas", action="store_true", help="Guardar también ofertas que la IA descarte.")
-    parser.add_argument("--max-eval", type=int, default=15, help="Tope de ofertas nuevas a evaluar por corrida.")
+    parser.add_argument("--max-eval", type=int, default=20, help="Tope de ofertas nuevas a evaluar/mostrar por corrida.")
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args()
 
@@ -667,33 +1252,45 @@ def main() -> None:
     kws = obtener_keywords_dinamicas(args.foco)
 
     todos_los_trabajos: list[dict] = []
-    with concurrent.futures.ThreadPoolExecutor(max_workers=12) as ex:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=14) as ex:
         tasks = []
-        for slug in catalogo.get("ashby", []):
-            if not args.empresa or args.empresa.lower() == slug.lower():
-                tasks.append(ex.submit(consultar_ashby, slug))
-        for slug in catalogo.get("greenhouse", []):
-            if not args.empresa or args.empresa.lower() == slug.lower():
+        solo_ai_eval = args.foco.lower() in ("ai-evaluator", "rlhf")
+        if solo_ai_eval:
+            # En foco ai-evaluator, consultar directamente las APIs en vivo de AI Evaluation (Mercor, micro1, Toloka, Turing, Labelbox, Invisible)
+            tasks.append(ex.submit(consultar_plataformas_ai_evaluator))
+            for slug in ("toloka", "turing", "labelbox", "invisible"):
                 tasks.append(ex.submit(consultar_greenhouse, slug))
-        for slug in catalogo.get("lever", []):
-            if not args.empresa or args.empresa.lower() == slug.lower():
-                tasks.append(ex.submit(consultar_lever, slug))
-        for slug in catalogo.get("teamtailor", []):
-            if not args.empresa or args.empresa.lower() == slug.lower():
-                tasks.append(ex.submit(consultar_teamtailor, slug))
-        for slug in catalogo.get("breezy", []):
-            if not args.empresa or args.empresa.lower() == slug.lower():
-                tasks.append(ex.submit(consultar_breezy, slug))
-        for slug in catalogo.get("smartrecruiters", []):
-            if not args.empresa or args.empresa.lower() == slug.lower():
-                tasks.append(ex.submit(consultar_smartrecruiters, slug))
-        if not args.solo_ats and not args.empresa:
-            tasks.append(ex.submit(consultar_getonboard))
-            tasks.append(ex.submit(consultar_wwr))
-            tasks.append(ex.submit(consultar_jobicy))
-            tasks.append(ex.submit(consultar_remotive))
-            tasks.append(ex.submit(consultar_remoteok))
-            tasks.append(ex.submit(consultar_himalayas))
+        else:
+            for slug in catalogo.get("ashby", []):
+                if not args.empresa or args.empresa.lower() == slug.lower():
+                    tasks.append(ex.submit(consultar_ashby, slug))
+            for slug in catalogo.get("greenhouse", []):
+                if not args.empresa or args.empresa.lower() == slug.lower():
+                    tasks.append(ex.submit(consultar_greenhouse, slug))
+            for slug in catalogo.get("lever", []):
+                if not args.empresa or args.empresa.lower() == slug.lower():
+                    tasks.append(ex.submit(consultar_lever, slug))
+            for slug in catalogo.get("teamtailor", []):
+                if not args.empresa or args.empresa.lower() == slug.lower():
+                    tasks.append(ex.submit(consultar_teamtailor, slug))
+            for slug in catalogo.get("breezy", []):
+                if not args.empresa or args.empresa.lower() == slug.lower():
+                    tasks.append(ex.submit(consultar_breezy, slug))
+            for slug in catalogo.get("smartrecruiters", []):
+                if not args.empresa or args.empresa.lower() == slug.lower():
+                    tasks.append(ex.submit(consultar_smartrecruiters, slug))
+            for slug in catalogo.get("workable", []):
+                if not args.empresa or args.empresa.lower() == slug.lower():
+                    tasks.append(ex.submit(consultar_workable, slug))
+            if not args.solo_ats and not args.empresa:
+                tasks.append(ex.submit(consultar_getonboard))
+                tasks.append(ex.submit(consultar_wwr))
+                tasks.append(ex.submit(consultar_jobicy))
+                tasks.append(ex.submit(consultar_remotive))
+                tasks.append(ex.submit(consultar_remoteok))
+                tasks.append(ex.submit(consultar_himalayas))
+                tasks.append(ex.submit(consultar_workingnomads))
+                tasks.append(ex.submit(consultar_plataformas_ai_evaluator))
 
         for fut in concurrent.futures.as_completed(tasks):
             try:
@@ -704,7 +1301,8 @@ def main() -> None:
                 pass
 
     coincidencias, stats = filtrar_trabajos(todos_los_trabajos, kws)
-    prov = evaluador_ia.detectar_proveedor_ia()
+    usar_ia = bool(args.crear_ofertas or args.evaluar_ia)
+    prov = evaluador_ia.detectar_proveedor_ia(rol="buscador-ofertas")
 
     if args.json:
         print(json.dumps(coincidencias, indent=2, ensure_ascii=False))
@@ -713,26 +1311,42 @@ def main() -> None:
     print(f"\n=======================================================")
     print(f"🔎 RASTREO MULTI-FUENTE ({len(todos_los_trabajos)} vacantes descargadas)")
     print(f"🚫 Filtradas por ubicación/modalidad/rol: {stats['descartadas_ubicacion_o_rol']}")
-    print(f"🎯 Candidatas pre-filtradas (100% remoto elegible): {len(coincidencias)}")
-    print(f"🤖 Evaluador activo: {prov['provider']}/{prov['model']} + Neo4j GraphRAG")
+    print(f"🎯 Candidatas ordenadas por pre-puntaje (0 tokens): {len(coincidencias)}")
+    if usar_ia:
+        print(f"🤖 Evaluador activo: {prov['provider']}/{prov['model']} + Neo4j GraphRAG")
+    else:
+        print(f"💡 Modo vista previa (0 tokens) — agrega --crear-ofertas o --evaluar-ia para puntuar con IA")
     print(f"=======================================================\n", flush=True)
 
     hoy = datetime.date.today().strftime("%Y-%m-%d")
     evaluadas = 0
     creadas = 0
+    urls_existentes, tuplas_existentes = cargar_indice_existentes()
 
     for c in coincidencias:
         if args.max_eval and evaluadas >= args.max_eval:
             print(f"ℹ Tope --max-eval ({args.max_eval}) alcanzado en esta corrida.")
             break
-        if ya_existe(c["url"]):
+        existe, motivo_dup = ya_existe_oferta(c, urls_existentes, tuplas_existentes)
+        if existe:
+            continue
+        ok_vivo, motivo_vivo = verificar_disponibilidad_url(c)
+        if not ok_vivo:
+            print(f"⏭ Omitida por no estar disponible ({motivo_vivo}): {c['empresa']} — {c['titulo']} ({c['url']})")
             continue
 
         evaluadas += 1
-        ev = evaluador_ia.evaluar_oferta(c)
+        if not usar_ia:
+            kws_txt = ", ".join((c.get("keywords_matched") or [])[:6])
+            print(f"• [pre {c.get('pre_score', 0):>2}/100] {c['empresa']} — {c['titulo']}")
+            print(f"   Portal: {c['portal']} | Ubicación: {c.get('ubicacion')} | Match: {kws_txt}")
+            print(f"   Link: {c['url']}\n", flush=True)
+            continue
+
+        ev = evaluador_ia.evaluar_oferta(c, rol="buscador-ofertas")
         icono = {"alta": "🔥", "media": "✅", "stretch": "⚠️", "descartada": "❌"}.get(ev.get("prioridad"), "•")
-        print(f"{icono} [{ev.get('match_score', 0)}/100 · {ev.get('prioridad')}] {c['empresa']} — {c['titulo']}")
-        print(f"   Portal: {c['portal']} | Modalidad: {ev.get('modalidad_real')} | Salario: {ev.get('salario_detectado')}")
+        print(f"{icono} [{ev.get('match_score', 0)}/100 · {ev.get('prioridad')} · pre {c.get('pre_score', 0)}] {c['empresa']} — {c['titulo']}")
+        print(f"   Portal: {c['portal']} | Ángulo: {ev.get('angulo')} | Modalidad: {ev.get('modalidad_real')} | Salario: {ev.get('salario_detectado')}")
         print(f"   Resumen: {ev.get('resumen_ia')}")
         if ev.get("logros_grafo_match"):
             print(f"   Grafo Match: {', '.join(ev['logros_grafo_match'][:2])}")
@@ -750,7 +1364,10 @@ def main() -> None:
         else:
             print(f"   Link: {c['url']}\n", flush=True)
 
-    print(f"Resumen final: {evaluadas} nuevas evaluadas · {creadas} guardadas en ofertas/{hoy}/", flush=True)
+    if usar_ia:
+        print(f"Resumen final: {evaluadas} nuevas evaluadas con IA · {creadas} guardadas en ofertas/{hoy}/", flush=True)
+    else:
+        print(f"Resumen final: {evaluadas} mejores candidatas mostradas (0 tokens). Usa --crear-ofertas para evaluar y guardar.", flush=True)
 
 
 if __name__ == "__main__":

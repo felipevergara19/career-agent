@@ -64,6 +64,10 @@ python3 scripts/rastrear_ats.py --buscar --foco finops
    - Revisar siempre: *Wazuh Official Careers (`wazuh.com/careers`), WazuGuardix, It4us, Get on Board (`getonbrd.com`)*.
 4. **Ángulo 4 — Junior/Mid AWS Cloud Operations & Optimization Engineer (Evitando roles de Kubernetes/Terraform desde cero):**
    - `"Ofertas de empleo remotas especificas en Chile, Latinoamerica, España, Belgica o Nueva Zelanda para Cloud Engineer AWS, FinOps o Automatizacion Python sin requerir Kubernetes Senior"`
+5. **Ángulo 5 (`ai-evaluator`) — Ingreso Extra por Hora en USD: AI Evaluator / RLHF / Prompt & Code Trainer (Freelance / Part-Time):**
+   - `"List specific remote freelance AI Trainer, AI Evaluator, RLHF, Bilingual Spanish-English Prompt Evaluator, or Python/DevOps Coding AI Tutor jobs hiring in Chile or Latin America paying hourly USD"`
+   - Revisar siempre: *Mercor (`work.mercor.com/explore`), micro1 (`micro1.ai/jobs`), Turing (`turing.com/jobs` y Greenhouse `turing`), DataAnnotation (`dataannotation.tech`), Outlier (`app.outlier.ai`), Alignerr (`alignerr.com`), Mindrift / Toloka (`mindrift.ai/apply` y Greenhouse `toloka`), Invisible Technologies (`invisible.co`)*.
+   - **Regla especial para este ángulo:** No descartar por no incluir FinOps/AWS; priorizar primero el **Track Nivel 1 (Bilingüe Español-Inglés / Prompt Comparison & Rubric Grading — $15 a $50 USD/h)** donde el título de Traductor EN/ES C1 + Ingeniero le da calce inmediato, y el **Track Nivel 2 (Python / DevOps / Cloud / Cybersecurity AI Evaluator — $35 a $75+ USD/h)**.
 
 ### Paso 2: Filtrado Duro (Descarte Inmediato)
 Descarta (o registra como descartada en el historial para análisis) cualquier oferta que:
@@ -92,7 +96,7 @@ Crea la carpeta de la fecha actual `ofertas/YYYY-MM-DD/` y guarda cada oferta en
 
 - `id` = `<YYYY-MM-DD>--<nombre-del-archivo-sin-.md>`; `legacy_id: null`.
 - `prioridad`: `alta` (>= 80), `media` (65–79), `stretch` (según §Paso 2 / preferencias) — `estado: evaluada`.
-- `angulo`: `finops` | `devsecops` | `secops-siem` | `ai-automation` (mapea los 4 ángulos del Paso 1).
+- `angulo`: `finops` | `devsecops` | `secops-siem` | `ai-automation` | `ai-evaluator` (mapea los 5 ángulos del Paso 1).
 - `keywords` y `brechas` como listas YAML; `cv: null`; `fecha_postulacion: null`.
 
 Las ofertas descartadas que aporten información de mercado se guardan igual con `estado: descartada`, `prioridad: descartada` y `motivo_descarte` (ficha corta).

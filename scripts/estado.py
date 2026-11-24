@@ -12,6 +12,8 @@ Uso:
   python3 scripts/estado.py existe <texto>          # deduplicación por url/empresa/cargo
   python3 scripts/estado.py mover <id> <estado> [--cv RUTA] [--prep RUTA]
                                   [--material RUTA] [--angulo A] [--motivo TXT] [--nota TXT] [--forzar]
+  python3 scripts/estado.py followups [--dias 7]    # postulaciones >N días con mensaje listo (0 tokens)
+  python3 scripts/estado.py verificar-links [--estado E] [--limit 30]  # detecta avisos 404/cerrados (0 tokens)
 
 Códigos de salida: 0 OK, 1 errores de validación / uso, 2 lock ocupado.
 """
@@ -80,6 +82,7 @@ ANGULOS = {
     "devsecops": "Ángulo 2: DevSecOps & AWS Cloud Security",
     "secops-siem": "Ángulo 3: Wazuh SIEM, SecOps & AWS CloudOps",
     "ai-automation": "Ángulo 4: AI Automation, n8n, Python & RAG",
+    "ai-evaluator": "Ángulo 5: AI Evaluator, RLHF, Prompt & Coding/Bilingual Trainer (Hourly USD)",
     "base": "CV Maestro Base",
 }
 
@@ -552,6 +555,259 @@ def cmd_mover(args) -> int:
   return 0
 
 
+def cmd_followups(args) -> int:
+  """Lista postulaciones en estado 'postulado' con >= N días sin respuesta y genera
+  un mensaje corto y humano listo para copiar/pegar (0 tokens)."""
+  hoy_d = dt.date.today()
+  ofertas, _ = cargar_ofertas()
+  pendientes = []
+  for meta in ofertas:
+    if meta.get("estado") != "postulado":
+      continue
+    fp = meta.get("fecha_postulacion") or meta.get("actualizado")
+    if not fp:
+      continue
+    try:
+      dias = (hoy_d - dt.date.fromisoformat(str(fp))).days
+    except ValueError:
+      continue
+    if dias >= args.dias:
+      pendientes.append((dias, meta))
+  pendientes.sort(key=lambda x: x[0], reverse=True)
+  if not pendientes:
+    print(f"✓ Sin follow-ups pendientes (>= {args.dias} días en estado 'postulado').")
+    return 0
+  print(f"⏰ {len(pendientes)} postulación(es) con >= {args.dias} días sin respuesta:\n")
+  for dias, m in pendientes:
+    emp = m.get("empresa") or "el equipo"
+    cargo = m.get("cargo") or "el cargo"
+    idioma = str(m.get("idioma") or "").lower()
+    es_en = "ingl" in idioma or "english" in idioma
+    if es_en:
+      msg = (
+          f"Hi {emp} team, following up on my application for {cargo} from {m.get('fecha_postulacion')}. "
+          f"Still very interested in the role and happy to share any extra context on my AWS/FinOps work if helpful. Best, Felipe"
+      )
+    else:
+      msg = (
+          f"Hola equipo de {emp}, hago un breve seguimiento a mi postulación para {cargo} del {m.get('fecha_postulacion')}. "
+          f"Sigo muy interesado en el rol y feliz de compartir más detalle de mi experiencia en AWS/FinOps si sirve. Saludos, Felipe"
+      )
+    print(f"• [{dias}d] {m['id']} · {emp} — {cargo}")
+    print(f"  Link: {m.get('url')}")
+    print(f"  Mensaje: {msg}\n")
+  return 0
+
+
+def cmd_verificar_links(args) -> int:
+  """Verifica HTTP + APIs oficiales (Ashby, Greenhouse, Lever, Mercor, micro1) en paralelo (0 tokens)
+  si las ofertas siguen abiertas o dieron 404/cerrada. Con --auto-descartar mueve las caídas en
+  evaluada/cv_generado a descartada automáticamente."""
+  import concurrent.futures as cf
+  import urllib.error
+  import urllib.request
+
+  re_cerrada = re.compile(
+      r"(no longer accepting|no longer available|job (not found|closed|expired|has been filled)|"
+      r"position has been filled|this (job|position|listing|opportunity) is (closed|no longer)|"
+      r"applications? (are |is )?closed|esta oferta (ha finalizado|ya no está disponible|fue cerrada)|"
+      r"the page you are looking for)",
+      re.I,
+  )
+  headers = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0"}
+  estados_obj = {args.estado} if args.estado else {"evaluada", "cv_generado"}
+  ofertas, _ = cargar_ofertas()
+  objetivos = [m for m in ofertas if m.get("estado") in estados_obj and str(m.get("url") or "").startswith("http")]
+  if args.limit:
+    objetivos = objetivos[: args.limit]
+  if not objetivos:
+    print("✓ No hay ofertas activas con URL para verificar.")
+    return 0
+
+  # Cache de APIs oficiales para no pedir el mismo tablero 2 veces
+  ashby_cache: dict[str, set[str]] = {}
+  mercor_cache: dict[str, dict] = {}
+  micro1_cache: set[str] | None = None
+  cache_lock = cf.thread. threading.Lock() if hasattr(cf, "thread") else None
+  import threading
+  tlock = threading.Lock()
+
+  def _ashby_ids(slug: str) -> set[str] | None:
+    with tlock:
+      if slug in ashby_cache:
+        return ashby_cache[slug]
+    try:
+      req = urllib.request.Request(f"https://api.ashbyhq.com/posting-api/job-board/{slug}", headers=headers)
+      with urllib.request.urlopen(req, timeout=8) as r:
+        data = json.loads(r.read().decode("utf-8", errors="ignore"))
+        ids = {str(j.get("id")) for j in (data.get("jobs") or [])}
+      with tlock:
+        ashby_cache[slug] = ids
+      return ids
+    except Exception:
+      return None
+
+  def _mercor_map() -> dict[str, dict]:
+    with tlock:
+      if mercor_cache:
+        return mercor_cache
+    try:
+      req = urllib.request.Request("https://work.mercor.com/explore", headers=headers)
+      with urllib.request.urlopen(req, timeout=10) as r:
+        body = r.read().decode("utf-8", errors="ignore")
+      m = re.search(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', body, re.S)
+      out: dict[str, dict] = {}
+      if m:
+        data = json.loads(m.group(1))
+        for q in (data.get("props", {}).get("pageProps", {}).get("dehydratedState", {}).get("queries") or []):
+          st = (q.get("state") or {}).get("data")
+          if isinstance(st, dict) and isinstance(st.get("listings"), list):
+            for item in st["listings"]:
+              if item.get("listingId"):
+                out[str(item["listingId"])] = item
+            break
+      with tlock:
+        mercor_cache.update(out)
+      return mercor_cache
+    except Exception:
+      return {}
+
+  def _micro1_ids() -> set[str] | None:
+    nonlocal micro1_cache
+    with tlock:
+      if micro1_cache is not None:
+        return micro1_cache
+    try:
+      ids: set[str] = set()
+      for page in (1, 2, 3, 4):
+        req = urllib.request.Request(
+            f"https://prod-api.micro1.ai/api/v1/job/portal?page={page}&limit=100&keyword=",
+            data=json.dumps({"action": "get_all_jobs", "filters": {"type": ["EXPERT"]}}).encode("utf-8"),
+            headers={**headers, "Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=8) as r:
+          data = json.loads(r.read().decode("utf-8", errors="ignore"))
+          batch = data.get("data") or []
+          for j in batch:
+            u = str(j.get("apply_url") or "")
+            m_id = re.search(r"/post/([a-f0-9-]{20,})", u)
+            if m_id:
+              ids.add(m_id.group(1))
+          if len(batch) < 100:
+            break
+      with tlock:
+        micro1_cache = ids
+      return ids
+    except Exception:
+      return None
+
+  def _check(m: dict) -> tuple[dict, str, str]:
+    url = str(m["url"])
+    # 1. Ashby API check
+    m_ash = re.search(r"jobs\.ashbyhq\.com/([^/]+)/([a-f0-9-]{20,})", url)
+    if m_ash:
+      ids = _ashby_ids(m_ash.group(1))
+      if ids is not None:
+        if m_ash.group(2) not in ids:
+          return m, "CERRADA", "No figura en API activa de Ashby"
+        return m, "OK", "Activa en API Ashby"
+
+    # 2. Greenhouse API check
+    m_gh = re.search(r"greenhouse\.io/([^/]+)/jobs/(\d+)", url)
+    if m_gh:
+      try:
+        req = urllib.request.Request(
+            f"https://boards-api.greenhouse.io/v1/boards/{m_gh.group(1)}/jobs/{m_gh.group(2)}",
+            headers=headers,
+        )
+        with urllib.request.urlopen(req, timeout=8) as r:
+          return m, "OK", f"Activa en API Greenhouse (HTTP {r.status})"
+      except urllib.error.HTTPError as e:
+        if e.code in (404, 410):
+          return m, "CERRADA", f"Cerrada en API Greenhouse (HTTP {e.code})"
+
+    # 3. Mercor API check
+    m_mc = re.search(r"work\.mercor\.com/jobs/(list_[A-Za-z0-9_-]+)", url)
+    if m_mc:
+       lid = m_mc.group(1)
+       mmap = _mercor_map()
+       if mmap:
+         item = mmap.get(lid)
+         if not item:
+           return m, "CERRADA", "Listing ya no existe en Mercor Explore API"
+         if item.get("status") != "active" or item.get("disableApplications") or item.get("deletedAt"):
+           return m, "CERRADA", f"Mercor status={item.get('status')}, disableApplications={item.get('disableApplications')}"
+         slots = item.get("remainingSlots")
+         if slots is not None and isinstance(slots, int) and slots <= 0:
+           return m, "CERRADA", "Mercor remainingSlots=0 (cupos agotados)"
+         return m, "OK", f"Activa en Mercor API (slots={slots if slots is not None else 'abierto'})"
+
+    # 4. micro1 API check
+    m_m1 = re.search(r"jobs\.micro1\.ai/post/([a-f0-9-]{20,})", url)
+    if m_m1:
+      ids = _micro1_ids()
+      if ids is not None:
+        if m_m1.group(1) not in ids:
+          return m, "CERRADA", "Vacante ya no figura en API activa de micro1"
+        return m, "OK", "Activa en API micro1"
+
+    # 5. HTTP + Body check general
+    try:
+      req = urllib.request.Request(url, headers=headers)
+      with urllib.request.urlopen(req, timeout=8) as resp:
+        body = resp.read(28000).decode("utf-8", errors="ignore")
+        if re_cerrada.search(body):
+          return m, "CERRADA", f"HTTP {resp.status} (texto de aviso cerrado)"
+        return m, "OK", f"HTTP {resp.status}"
+    except urllib.error.HTTPError as e:
+      if e.code in (404, 410):
+        return m, "MUERTA", f"HTTP {e.code}"
+      return m, "AVISO", f"HTTP {e.code}"
+    except Exception as e:
+      return m, "AVISO", str(e)[:60]
+
+  muertas, cerradas, avisos, ok_cnt = [], [], [], 0
+  with cf.ThreadPoolExecutor(max_workers=10) as ex:
+    for m, st, info in ex.map(_check, objetivos):
+      if st == "OK":
+        ok_cnt += 1
+      elif st == "MUERTA":
+        muertas.append((m, info))
+      elif st == "CERRADA":
+        cerradas.append((m, info))
+      else:
+        avisos.append((m, info))
+
+  print(f"🔎 Verificados {len(objetivos)} links: {ok_cnt} OK · {len(muertas)} 404/410 · {len(cerradas)} cerradas · {len(avisos)} avisos\n")
+  descartadas_auto = 0
+  for m, info in muertas + cerradas:
+    print(f"❌ [{info}] {m['id']} · {m.get('empresa')} — {m.get('cargo')}")
+    print(f"   {m.get('url')}")
+    if getattr(args, "auto_descartar", False) and m.get("estado") in ("evaluada", "cv_generado"):
+      ns = argparse.Namespace(
+          id=m["id"],
+          estado="descartada",
+          cv=None,
+          prep=None,
+          material=None,
+          angulo=None,
+          motivo=f"Oferta cerrada o ya no disponible ({info})",
+          nota=f"Auto-descartada por verificador de links en vivo ({info})",
+          forzar=True,
+      )
+      if cmd_mover(ns) == 0:
+        descartadas_auto += 1
+    else:
+      print(f"   → python3 scripts/estado.py mover {m['id']} descartada --motivo \"Oferta cerrada o link caído ({info})\"\n")
+  if descartadas_auto:
+    cmd_sincronizar()
+    print(f"✓ Auto-descartadas {descartadas_auto} oferta(s) cerradas/caídas y tablero sincronizado.")
+  if avisos:
+    print(f"⚠ {len(avisos)} link(s) con bloqueo/timeout (p. ej. LinkedIn/Cloudflare — revisar manualmente si interesa).")
+  return 0
+
+
 def main() -> int:
   p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
   sub = p.add_subparsers(dest="cmd", required=True)
@@ -577,6 +833,14 @@ def main() -> int:
   pm.add_argument("--nota")
   pm.add_argument("--forzar", action="store_true")
   pm.set_defaults(fn=cmd_mover)
+  pf = sub.add_parser("followups", help="postulaciones >N días con mensaje humano listo para copiar")
+  pf.add_argument("--dias", type=int, default=7)
+  pf.set_defaults(fn=cmd_followups)
+  pv = sub.add_parser("verificar-links", help="detecta avisos 404/cerrados en ofertas activas")
+  pv.add_argument("--estado", choices=list(ESTADOS), default="")
+  pv.add_argument("--limit", type=int, default=50)
+  pv.add_argument("--auto-descartar", action="store_true", help="Mueve automáticamente a descartada las ofertas cerradas/404 en evaluada o cv_generado")
+  pv.set_defaults(fn=cmd_verificar_links)
   args = p.parse_args()
   return args.fn(args)
 

@@ -104,7 +104,12 @@ def main() -> int:
   if not cola:
     print("No hay ofertas de prioridad alta sin CV.")
   else:
-    print(f"{len(cola)} oferta(s): " + ", ".join(o["id"] for o in cola))
+    print(f"{len(cola)} oferta(s) de prioridad alta listas para CV (verifica el ángulo elegido):")
+    for o in cola:
+      ang = o.get("angulo") or "base"
+      sc = o.get("match_score")
+      print(f"  · [{sc}/100 | ángulo: {ang:<13}] {o['empresa']} — {o['cargo']}  ({o['id']})")
+    print("  (Si algún ángulo no corresponde, corrígelo con: python3 scripts/estado.py mover <id> evaluada --angulo <finops|devsecops|secops-siem|ai-automation>)\n")
     if a.llm_cv:
       with ThreadPoolExecutor(max_workers=max(1, a.max_paralelo)) as pool:
         futuros = {o["id"]: pool.submit(lanzar.ejecutar, "adaptar-cv", o["id"], None, None, a.dry_run, False,
@@ -115,7 +120,7 @@ def main() -> int:
     else:
       for o in cola:
         if a.dry_run:
-          print(f"[DRY-RUN] Ensamblaría CV para {o['id']}")
+          print(f"[DRY-RUN] Ensamblaría CV para {o['id']} (ángulo: {o.get('angulo') or 'base'})")
         else:
           res_cv = subprocess.run([PY, "scripts/ensamblar_cv.py", "--oferta", o["id"]], cwd=ROOT)
           if res_cv.returncode != 0:

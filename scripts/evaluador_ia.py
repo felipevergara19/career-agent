@@ -93,6 +93,13 @@ DEFAULT_ROLES_CONFIG = {
         "provider": "",
         "model": "",
     },
+    "asistente-postulacion": {
+        "nombre": "Asistente de Postulación",
+        "tier": "Redacción Verídica · Preguntas Portal",
+        "descripcion": "Responde screening questions de portales basadas estrictamente en el perfil real de Felipe.",
+        "provider": "",
+        "model": "",
+    },
 }
 
 
@@ -171,6 +178,25 @@ def guardar_config_ia_local(updates: dict) -> dict:
     return actual
 
 
+def _leer_api_desde_agentes_yaml(rol: str | None) -> tuple[str, str]:
+    """Lee proveedor/modelo API por defecto desde agentes.yaml → roles.<rol>.modelos.api
+    (formato 'openrouter/google/gemini-2.5-flash' o 'gemini/gemini-2.5-flash')."""
+    if not rol:
+        return "", ""
+    ag_path = ROOT / "agentes.yaml"
+    if not ag_path.is_file():
+        return "", ""
+    try:
+        data = yaml.safe_load(ag_path.read_text(encoding="utf-8")) or {}
+        api_spec = str((((data.get("roles") or {}).get(rol) or {}).get("modelos") or {}).get("api") or "").strip()
+        if "/" in api_spec:
+            prov, mod = api_spec.split("/", 1)
+            return prov.strip().lower(), mod.strip()
+    except Exception:
+        pass
+    return "", ""
+
+
 def detectar_proveedor_ia(rol: str | None = None) -> dict:
     cfg = cargar_config_ia_local()
 
@@ -191,13 +217,19 @@ def detectar_proveedor_ia(rol: str | None = None) -> dict:
         "agy": lambda: "agy-cli",
     }
 
-    # 1. Si se pide un rol específico y tiene configuración propia en la matriz multi-agente
+    # 1. Si se pide un rol específico y tiene configuración propia en la matriz multi-agente (.ai-config.json)
     role_cfg = (cfg.get("roles") or {}).get(rol, {}) if (rol and isinstance(cfg.get("roles"), dict)) else {}
     r_prov = (role_cfg.get("provider") or "").strip().lower()
     r_model = (role_cfg.get("model") or "").strip()
 
     if r_prov in candidatos and candidatos[r_prov]():
         return {"provider": r_prov, "model": r_model or modelos[r_prov](), "rol": rol}
+
+    # 1b. Si no hay override en .ai-config.json, leer default por rol desde agentes.yaml
+    if not r_prov and not r_model:
+        y_prov, y_model = _leer_api_desde_agentes_yaml(rol)
+        if y_prov in candidatos and candidatos[y_prov]():
+            return {"provider": y_prov, "model": y_model or modelos[y_prov](), "rol": rol}
 
     # 2. Proveedor preferido global (pero respetando modelo override del rol si se definió)
     preferido = (os.environ.get("AI_PROVIDER") or "").strip().lower()
@@ -410,8 +442,9 @@ Responde ÚNICAMENTE con un objeto JSON válido (sin markdown ni texto extra) co
 REGLAS CRÍTICAS:
 1. Evalúa `elegible_chile_remoto` como TRUE solo si la oferta es compatible con la modalidad deseada ({modalidad_pref}) y el país/regiones del candidato ({pais} / {regiones}). Si exige residencia en otro país o viola la modalidad deseada -> elegible_chile_remoto=false, remoto_chile_20=0, prioridad="descartada", match_score <= 35.
 2. Si `solo_ic` es true y el cargo es Manager, Director, VP, Head of, Scrum Master o Project Manager -> es_ic_tecnico=false, prioridad="descartada", match_score <= 25.
-3. Si viola alguna exclusión dura del candidato ({exclusiones or 'ninguna'}) -> prioridad="descartada", match_score <= 35.
-4. match_score debe ser coherente con la suma del desglose (clamp 0..100).
+3. Si viola alguna exclusión dura del candidato ({exclusiones or 'ninguna'}) -> prioridad="descartada", match_score <= 30, motivo_descarte="Coincide con exclusión no negociable".
+4. MEMORIA DE RECHAZO (AI EVALUATION): Si el rol es de AI Evaluator / AI Trainer pero pertenece a disciplinas científicas/académicas no informáticas (ej: Life Sciences, Physical Sciences, Mathematics, Biology, Chemistry, Physics, Medicine, Kaggle/Pure ML Research), márcala OBLIGATORIAMENTE como prioridad="descartada", match_score <= 30 y motivo_descarte="Disciplina ajena a perfil técnico (no afín a Cloud/DevOps/Software/Traducción)".
+5. match_score debe ser coherente con la suma del desglose (clamp 0..100).
 """
 
 
@@ -677,6 +710,7 @@ def evaluar_heuristica(oferta: dict, logros_grafo: list[dict]) -> dict:
         tiene_finops = bool(re.search(r"\b(finops|cloud cost|cost optimization|savings plans|cur|cost explorer|cloud financial)\b", full))
         tiene_aws = bool(re.search(r"\b(aws|amazon web services|iam|guardduty|cloudwatch|ec2|s3|lambda|boto3)\b", full))
         tiene_secops = bool(re.search(r"\b(devsecops|secops|siem|wazuh|cloud security|incident response|guardduty)\b", full))
+        tiene_ai_eval = bool(re.search(r"\b(ai trainer|ai tutor|ai evaluator|ai rater|rlhf|prompt evaluation|model evaluation|rubric|data annotation)\b", full))
         tiene_ai = bool(re.search(r"\b(ai automation|llm|openai|claude|gemini|python|automation|n8n|workflows?)\b", full))
         if tiene_finops and tiene_aws:
             tecnico, angulo = w_tec, "finops"
@@ -684,6 +718,8 @@ def evaluar_heuristica(oferta: dict, logros_grafo: list[dict]) -> dict:
             tecnico, angulo = int(w_tec * 0.85), "finops"
         elif tiene_secops and tiene_aws:
             tecnico, angulo = int(w_tec * 0.8), "secops-siem"
+        elif tiene_ai_eval:
+            tecnico, angulo = int(w_tec * 0.8), "ai-evaluator"
         elif tiene_aws and tiene_ai:
             tecnico, angulo = int(w_tec * 0.74), "ai-automation"
         elif tiene_aws:

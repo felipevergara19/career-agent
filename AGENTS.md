@@ -95,7 +95,7 @@ evaluada ──► cv_generado ──► postulado ──► entrevista_hr ─�
 | Archivo | Escribe | Los demás |
 | :--- | :--- | :--- |
 | `ofertas/<fecha>/*.md` (crear) | `buscador-ofertas` | Solo cambian estado vía `estado.py mover` |
-| `cvs-generados/**`, `postulaciones/material/**` | `adaptador-cv` | Lectura |
+| `cvs-generados/**`, `postulaciones/material/**` | `adaptador-cv`, `asistente-postulacion` | Lectura |
 | `entrevistas/**` | `preparador-entrevistas` | Lectura |
 | `perfil/*.md`, `postulaciones/mejoras-perfil.md`, `datos-historial.json` (`radar_skills`, `efectividad_portales`) | `perfil-tracker` | Lectura; proponen cambios en su resumen final |
 | `tracker.md`, `estado-postulaciones.csv`, `datos-historial.json` (`ofertas`), XLSX/CSV | **Nadie a mano** → `estado.py sincronizar` | — |
@@ -115,6 +115,7 @@ evaluada ──► cv_generado ──► postulado ──► entrevista_hr ─�
 | :--- | :--- | :--- | :--- | :--- |
 | Buscador / Analista de ofertas | [buscador-ofertas](.agents/skills/buscador-ofertas/SKILL.md) | `perfil/*`, `estado-postulaciones.csv` · (modo puntual: URL o texto) | `ofertas/<hoy>/<slug>.md` | `evaluada` o `descartada` |
 | Adaptador de CV | [adaptador-cv](.agents/skills/adaptador-cv/SKILL.md) | ID de oferta + `perfil-maestro.md` | `cvs-generados/<hoy>/cv-...{md,html,pdf}` + `postulaciones/material/<id>.md` | `cv_generado` (+ `material`) |
+| Asistente de Postulación | [asistente-postulacion](.agents/skills/asistente-postulacion/SKILL.md) | ID de oferta + screening questions del portal | Respuestas verídicas en `postulaciones/material/<id>.md` y UI | (no altera estado; enriquece `material`) |
 | Preparador de entrevistas | [preparador-entrevistas](.agents/skills/preparador-entrevistas/SKILL.md) | ID de oferta + su CV + perfil | `entrevistas/<id>.md` | (no cambia estado; agrega `prep_entrevista`) |
 | Perfil y seguimiento | [perfil-tracker](.agents/skills/perfil-tracker/SKILL.md) | Novedades de Felipe, todas las ofertas | Perfil, mejoras, radar, sincronización | `postulado`, `entrevista_*`, `oferta`, `rechazada` |
 
@@ -125,6 +126,7 @@ evaluada ──► cv_generado ──► postulado ──► entrevista_hr ─�
 | `/buscar` | buscador-ofertas | Búsqueda diaria completa |
 | `/analizar <url o texto>` | buscador-ofertas (modo puntual) | Evalúa una sola oferta con la rúbrica y la registra |
 | `/adaptar-cv <id>` | adaptador-cv | Genera CV adaptado para una oferta |
+| `/postulacion <id> [preguntas]` | asistente-postulacion | Responde screening questions de portales con veracidad estricta |
 | `/entrevista <id>` | preparador-entrevistas | Guía de preparación de entrevista |
 | `/tracker [novedad]` | perfil-tracker | Registra novedades, revisa follow-ups y sincroniza |
 | `/corrida-diaria` | todos | Flujo completo (sección 4) |
@@ -137,6 +139,7 @@ evaluada ──► cv_generado ──► postulado ──► entrevista_hr ─�
 | perfil-tracker | Mecánica (estados, KPIs) | `flash_lite` | `haiku` | `composer-2.5-fast` | Cursor |
 | buscador-ofertas | Volumen web + rúbrica | `flash` | `sonnet` | `gpt-5.5-medium` | Cursor |
 | adaptador-cv | Redacción ATS / material | `flash` *(o `pro` si se pide)* | `sonnet` | `claude-sonnet-5-thinking-high` | Claude Code |
+| asistente-postulacion | Screening questions / veracidad | `flash` | `sonnet` | `claude-sonnet-5-thinking-high` | Claude Code |
 | preparador-entrevistas | Razonamiento profundo | `pro` | `opus` | `claude-opus-5-5-medium` | Claude Code |
 | director (`/pipeline`) | Orquestación | `inherit` (sesión principal) | `sonnet` | `auto` | Claude Code |
 
@@ -177,7 +180,7 @@ Cuando Felipe pida **"Ejecuta la corrida diaria"** o `/corrida-diaria`:
 ---
 
 ## 5. Reglas globales
-- **Veracidad estricta (archivos y chat):** ningún agente inventa experiencia, métricas, años, certificaciones ni ejemplos/anécdotas fuera de `perfil/perfil-maestro.md`, **tampoco al responder preguntas en el chat o en formularios de postulación**. Si falta un dato, caso real o ejemplo específico para responder una pregunta (por ejemplo, de entrevista o formulario), **pregunta primero a Felipe** en vez de asumir, extrapolar o fabricar una historia plausible.
+- **Veracidad estricta:** ningún agente inventa experiencia, métricas, años ni certificaciones fuera de `perfil/perfil-maestro.md`.
 - Usa rutas **relativas** al repo en todos los archivos (nada de `file:///home/...`).
 - Herramientas web: usa la herramienta de búsqueda/lectura web que exponga tu entorno (Antigravity `search_web`, Claude Code `WebSearch`/`WebFetch`, Cursor `web_search`/`fetch`, Gemini CLI `google_web_search`/`web_fetch`).
 - Google Drive: solo con `scripts/drive_sync.py` y el remoto rclone personal (`gdrive-career`). Nunca uses credenciales ni cuentas de Colektia.

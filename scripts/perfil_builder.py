@@ -613,6 +613,8 @@ def _parsear_preferencias_md(texto: str, pref: dict) -> None:
             areas_inf.append({"slug": "secops-siem", "nombre": "SecOps, SIEM & Cloud Security", "keywords": ["secops", "siem", "wazuh", "guardduty", "cloud security", "iam", "incident response"]})
         if any(k in roles_joined for k in ("ai automation", "finops for ai", "n8n", "llm")):
             areas_inf.append({"slug": "ai-automation", "nombre": "AI Automation & Python", "keywords": ["ai automation", "python", "llm", "n8n", "rag", "workflow automation", "boto3"]})
+        if any(k in roles_joined for k in ("ai evaluator", "ai rater", "ai trainer", "rlhf", "prompt evaluator")):
+            areas_inf.append({"slug": "ai-evaluator", "nombre": "AI Evaluator & RLHF (Hourly USD)", "keywords": ["ai evaluator", "ai trainer", "ai tutor", "rlhf", "prompt evaluator", "bilingual spanish", "python"]})
         if areas_inf:
             pref["areas"] = areas_inf
 
@@ -649,8 +651,8 @@ def _seed_desde_markdown_existente() -> dict:
 
             dp["nombre"] = _campo("Nombre completo")
             ubic_full = _campo("Ubicación base") or _campo("Ubicación")
-            dp["ubicacion"] = ubic_full
-            m_tz = re.search(r"\b(CLT|EST|CST|PST|CET|UTC[+-]\d+(?:\s*a\s*UTC[+-]\d+)?)\b", ubic_full)
+            dp["ubicacion"] = ubic_full.split("(", 1)[0].strip(" ,·|-") or ubic_full
+            m_tz = re.search(r"\b(CLT\s*/\s*EST|EST\s*/\s*CST|CLT|EST|CST|PST|CET|UTC[+-]\d+(?:\s*a\s*UTC[+-]\d+)?)\b", ubic_full)
             if m_tz:
                 dp["zona_horaria"] = m_tz.group(0)
             for pais_cand in ("Chile", "México", "Colombia", "Argentina", "Perú", "España", "Uruguay", "Brasil"):
@@ -663,15 +665,24 @@ def _seed_desde_markdown_existente() -> dict:
             dp["github"] = _campo("GitHub")
             dp["portafolio"] = _campo("Portafolio")
 
-            # Idiomas
+            # Idiomas (concisos: Nativo / C1)
             idiomas_found = []
             for m_id in re.finditer(r"^\s{2,}-\s+\*\*([^:*]+):\*\*\s*(.+)$", texto, flags=re.M):
                 idm_name = m_id.group(1).strip()
                 if idm_name.lower() in ("español", "inglés", "ingles", "portugués", "francés", "alemán", "english", "spanish"):
-                    lvl = re.sub(r"\*\*", "", m_id.group(2)).strip()
-                    # Acortar nivel si trae explicación larga entre paréntesis
-                    lvl_short = lvl.split("(")[0].strip() or lvl[:40]
-                    idiomas_found.append({"idioma": idm_name, "nivel": lvl_short[:50]})
+                    lvl_raw = re.sub(r"\*\*", "", m_id.group(2)).strip()
+                    low_l = lvl_raw.lower()
+                    if "nativ" in low_l:
+                        lvl_short = "Nativo"
+                    elif "c2" in low_l:
+                        lvl_short = "C2"
+                    elif "c1" in low_l:
+                        lvl_short = "C1"
+                    elif "b2" in low_l:
+                        lvl_short = "B2"
+                    else:
+                        lvl_short = lvl_raw.split("(")[0].strip()[:24]
+                    idiomas_found.append({"idioma": idm_name, "nivel": lvl_short})
             if idiomas_found:
                 dp["idiomas"] = idiomas_found
 
@@ -686,14 +697,14 @@ def _seed_desde_markdown_existente() -> dict:
             else:
                 perfil["titular_principal"] = _campo("Titular Principal")
 
-            # Resumen profesional (si hay párrafo bajo sección 2 o intro en experiencia)
-            m_res = re.search(r"\*Administra[^\n*]+\*", texto)
+            # Resumen profesional (captura línea completa aunque tenga **negritas** internas)
+            m_res = re.search(r"^\*Administra[^\n]+$", texto, flags=re.M)
             if m_res:
                 perfil["resumen_profesional"] = re.sub(r"\*+", "", m_res.group(0)).strip().rstrip(":")
             elif perfil["titular_principal"]:
                 perfil["resumen_profesional"] = f"{perfil['titular_principal']}."
 
-            # Experiencias (bloques ### **Empresa**)
+            # Experiencias (bloques ### **Empresa**, excluyendo proyectos open-source)
             exps = []
             sec_exp_m = re.search(r"##\s*3\.\s*Experiencia.*?(?=##\s*4\.|\Z)", texto, flags=re.S | re.I)
             if sec_exp_m:
@@ -705,6 +716,8 @@ def _seed_desde_markdown_existente() -> dict:
                         continue
                     titulo_bl = m_h.group(1).strip()
                     meta_bl = re.sub(r"[*()]", "", m_h.group(2)).strip()
+                    if "proyecto" in titulo_bl.lower() or "open-source" in titulo_bl.lower():
+                        continue
                     if "experiencia previa" in titulo_bl.lower():
                         # Parsear sub-roles como experiencias individuales
                         for m_prev in re.finditer(
@@ -721,10 +734,13 @@ def _seed_desde_markdown_existente() -> dict:
                             exps.append({"empresa": emp_p, "cargo": cargo_p, "periodo": per_p, "ubicacion": ub_p, "rubro": "", "bullets": bul_p})
                         continue
 
-                    m_cargo = re.search(r"\*\*(?:Etapa\s*\d+[^*]*|Rol):\*\*\s*\*{0,2}([^*\n(]+)", bl, flags=re.I)
-                    cargo = m_cargo.group(1).strip().rstrip("* ") if m_cargo else titulo_bl
-                    m_per = re.search(r"\b(20\d{2}\s*[–\-]\s*(?:Presente|Present|20\d{2})|(?:Ene|Feb|Mar|Abr|May|Jun|Jul|Ago|Sep|Oct|Nov|Dic|Jan|Apr|Aug|Dec)[a-z]*\s+20\d{2}[^|)*\n]*)", bl, flags=re.I)
-                    periodo = m_per.group(1).strip() if m_per else ""
+                    etapas = list(
+                        re.finditer(
+                            r"^\s*-\s+\*\*Etapa\s*\d+[^*]*:\*\*\s*\*\*([^*]+)\*\*\s*\*\(([^)]+)\)\*",
+                            bl,
+                            flags=re.M | re.I,
+                        )
+                    )
                     bullets = []
                     for m_b in re.finditer(r"^\s*-\s+\*\*([^*]{8,140})\*\*:?\s*(.*)$", bl, flags=re.M):
                         b_tit = m_b.group(1).strip().rstrip(":")
@@ -732,52 +748,81 @@ def _seed_desde_markdown_existente() -> dict:
                             continue
                         b_rest = m_b.group(2).strip()
                         bullets.append(f"{b_tit}: {b_rest}" if b_rest else b_tit)
-                    exps.append({
-                        "empresa": titulo_bl,
-                        "cargo": cargo,
-                        "periodo": periodo,
-                        "ubicacion": "100% Remoto" if "remoto" in bl.lower() else "",
-                        "rubro": meta_bl,
-                        "bullets": bullets[:10],
-                    })
+
+                    if len(etapas) >= 2:
+                        # Unificar experiencia continua (~3 años) con el cargo actual
+                        c_act = etapas[0].group(1).strip()
+                        p_prev = etapas[1].group(2).split("|")[0].split(";")[0].strip()
+                        m_start = re.search(r"(20\d{2})", p_prev)
+                        start_yr = m_start.group(1) if m_start else "2024"
+                        exps.append({
+                            "empresa": titulo_bl,
+                            "cargo": c_act,
+                            "periodo": f"{start_yr} – Presente",
+                            "ubicacion": "Santiago, Chile (100% Remoto)" if "remoto" in bl.lower() else "",
+                            "rubro": meta_bl,
+                            "bullets": bullets[:10],
+                        })
+                    else:
+                        m_cargo = re.search(r"\*\*(?:Etapa\s*\d+[^*]*|Rol):\*\*\s*\*{0,2}([^*\n(]+)", bl, flags=re.I)
+                        cargo = m_cargo.group(1).strip().rstrip("* ") if m_cargo else titulo_bl
+                        m_per = re.search(r"\b(20\d{2}\s*[–\-]\s*(?:Presente|Present|20\d{2})|(?:Ene|Feb|Mar|Abr|May|Jun|Jul|Ago|Sep|Oct|Nov|Dic|Jan|Apr|Aug|Dec)[a-z]*\s+20\d{2}[^|)*\n]*)", bl, flags=re.I)
+                        periodo = m_per.group(1).strip() if m_per else ""
+                        exps.append({
+                            "empresa": titulo_bl,
+                            "cargo": cargo,
+                            "periodo": periodo,
+                            "ubicacion": "100% Remoto" if "remoto" in bl.lower() else "",
+                            "rubro": meta_bl,
+                            "bullets": bullets[:10],
+                        })
             if exps:
                 perfil["experiencias"] = exps
 
-            # Educación y Certificaciones
+            # Educación y Certificaciones (soporta paréntesis en nombre de institución como UNAB)
             m_edu = re.search(r"###\s*Educaci[oó]n(.*?)(?=###|\Z)", texto, flags=re.S | re.I)
             if m_edu:
-                for m_e in re.finditer(r"^\s*-\s+\*\*([^*]+)\*\*\s*—\s*\*?([^*\n(]+)\*?\s*(?:\(([^)]+)\))?", m_edu.group(1), flags=re.M):
+                for m_e in re.finditer(r"^\s*-\s+\*\*([^*]+)\*\*\s*[—–]\s*\*?([^*\n]+?)\*?\s*(?:\(([^()]*\d{4}[^()]*)\))\s*$", m_edu.group(1), flags=re.M):
+                    per_raw = (m_e.group(3) or "").strip()
+                    per_clean = per_raw.split("|")[0].strip()
+                    per_clean = re.sub(r"(?i)titulaci[oó]n:\s*", "", per_clean).strip()
                     perfil["educacion"].append({
                         "titulo": m_e.group(1).strip(),
                         "institucion": m_e.group(2).strip(),
-                        "periodo": (m_e.group(3) or "").strip(),
+                        "periodo": per_clean,
                     })
             m_cert = re.search(r"###\s*Certificaciones[^\n]*(.*?)(?=##|\Z)", texto, flags=re.S | re.I)
             if m_cert:
-                for m_c in re.finditer(r"^\s*-\s+\*\*([^*]+)\*\*\s*—\s*\*?([^*\n(]+)\*?\s*(?:\(([^)]+)\))?", m_cert.group(1), flags=re.M):
+                for m_c in re.finditer(r"^\s*-\s+\*\*([^*]+)\*\*\s*[—–]\s*\*?([^*\n(]+?)\*?\s*(?:\(([^)]+)\))?\s*$", m_cert.group(1), flags=re.M):
+                    fecha_c = re.sub(r"\*+", "", (m_c.group(3) or "")).strip()
+                    fecha_c = re.sub(r"(?i)certificado\s+obtenido\s*[—–\-]\s*", "", fecha_c).strip()
                     perfil["certificaciones"].append({
                         "nombre": m_c.group(1).strip(),
                         "entidad": m_c.group(2).strip(),
-                        "fecha": re.sub(r"\*+", "", (m_c.group(3) or "")).strip(),
+                        "fecha": fecha_c,
                     })
 
-            # Skills: primero intentar líneas explícitas 🟢/🟡/🔴, luego detectar stack real presente en el perfil
+            # Skills: primero intentar líneas explícitas 🟢/🟡/🔴, luego detectar stack real curado
             for m_sk in re.finditer(r"🟢\s*\*\*[^*]+:\*\*\s*(.+)", texto):
                 perfil["skills"]["avanzado"].extend([s.strip() for s in m_sk.group(1).split(",") if s.strip()])
             for m_sk in re.finditer(r"🟡\s*\*\*[^*]+:\*\*\s*(.+)", texto):
                 perfil["skills"]["intermedio"].extend([s.strip() for s in m_sk.group(1).split(",") if s.strip()])
             if not perfil["skills"]["avanzado"]:
                 catalogo_tech = [
-                    "AWS", "FinOps", "AWS Cost Explorer", "Savings Plans", "VPC Endpoints", "IAM",
-                    "AWS Organizations", "IAM Identity Center", "ECS Fargate", "CloudWatch", "CloudTrail",
-                    "GuardDuty", "EventBridge", "SNS", "KMS", "Secrets Manager", "ElastiCache", "RDS", "S3",
-                    "SES", "Athena", "EKS", "Terraform", "Ansible", "Python", "Boto3", "Bash", "SQL",
-                    "Docker", "Linux", "Wazuh", "SIEM", "Bitdefender", "Cloudflare WAF", "incident.io",
-                    "n8n", "LLMs", "PostgreSQL", "Neo4j", "FastAPI", "Git", "CI/CD",
+                    "AWS", "FinOps", "AWS Cost Explorer", "Savings Plans", "VPC Endpoints",
+                    "AWS Organizations", "IAM Identity Center", "CloudWatch", "CloudTrail",
+                    "GuardDuty", "EventBridge", "SNS", "KMS", "Secrets Manager", "ElastiCache",
+                    "Terraform", "Ansible", "Python", "Boto3", "Bash", "n8n", "SQL",
+                    "Wazuh SIEM", "Bitdefender XDR", "Cloudflare WAF", "incident.io",
+                    "LLMs", "Docker", "Linux", "RDS", "S3", "Athena",
                 ]
                 perfil["skills"]["avanzado"] = [
                     t for t in catalogo_tech
-                    if re.search(r"(?<![a-z0-9])" + re.escape(t.lower()) + r"(?![a-z0-9])", texto.lower())
+                    if any(
+                        re.search(r"(?<![a-z0-9])" + re.escape(tok.lower()) + r"(?![a-z0-9])", texto.lower())
+                        for tok in (t, t.split()[0])
+                        if len(tok) >= 2
+                    )
                 ][:24]
 
             # Impact Log limpio extraído directamente de los logros reales en experiencias

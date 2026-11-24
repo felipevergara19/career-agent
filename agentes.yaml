@@ -23,18 +23,27 @@ roles:
       claude: sonnet
       cursor: gpt-5.5-medium
       antigravity: flash         # búsqueda web + evaluación con rúbrica
+      api: agy/gemini-2.5-flash   # usado por scripts/evaluador_ia.py (clasificación + score)
   adaptador-cv:
     herramienta: claude
     modelos:
       claude: sonnet
       cursor: claude-sonnet-5-thinking-high
-      antigravity: flash         # redacción ATS y material (usar pro solo en roles críticos)
+      antigravity: pro           # redacción ATS estricta sin alucinaciones (solo ofertas prioridad alta)
+      api: agy/gemini-2.5-flash  # usado por scripts/ensamblar_cv.py --usar-ia
   preparador-entrevistas:
     herramienta: claude
     modelos:
       claude: opus
       cursor: claude-opus-5-5-medium
       antigravity: pro           # razonamiento profundo y poco frecuente
+  asistente-postulacion:
+    herramienta: claude
+    modelos:
+      claude: sonnet
+      cursor: claude-sonnet-5-thinking-high
+      antigravity: flash
+      api: agy/gemini-2.5-flash  # screening questions y respuestas para formularios
   director:                      # /pipeline y /corrida-diaria dentro de una sesión
     herramienta: claude
     modelos:
@@ -47,6 +56,7 @@ comandos:                        # comando → rol que lo ejecuta
   analizar: buscador-ofertas
   adaptar-cv: adaptador-cv
   entrevista: preparador-entrevistas
+  postulacion: asistente-postulacion
   tracker: perfil-tracker
   corrida-diaria: director
   pipeline: director

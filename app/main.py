@@ -92,6 +92,18 @@ class GenerarCvBasePayload(BaseModel):
     usar_ia: bool = False
 
 
+class GenerarCvOfertaPayload(BaseModel):
+    idioma: str | None = None
+    angulo: str | None = None
+    usar_ia: bool = False
+
+
+class ResponderPreguntasPayload(BaseModel):
+    preguntas: str
+    idioma: str | None = "auto"
+    guardar: bool = True
+
+
 def _mask_key(val: str | None) -> str:
     if not val:
         return ""
@@ -131,6 +143,21 @@ def index():
     if not html_path.exists():
         raise HTTPException(status_code=404, detail="Dashboard no encontrado")
     return html_path.read_text(encoding="utf-8")
+
+
+@app.get("/favicon.svg", include_in_schema=False)
+def favicon_svg():
+    return FileResponse(STATIC_DIR / "favicon.svg", media_type="image/svg+xml")
+
+
+@app.get("/favicon-32x32.png", include_in_schema=False)
+def favicon_png():
+    return FileResponse(STATIC_DIR / "favicon-32x32.png", media_type="image/png")
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon_ico():
+    return FileResponse(STATIC_DIR / "favicon.ico", media_type="image/x-icon")
 
 
 @app.get("/api/health")
@@ -218,8 +245,16 @@ def mover_oferta(oferta_id: str, body: MoverPayload):
 
 
 @app.post("/api/ofertas/{oferta_id}/generar-cv")
-def generar_cv_oferta(oferta_id: str):
-    res = _run_py("ensamblar_cv.py", "--oferta", oferta_id)
+def generar_cv_oferta(oferta_id: str, body: GenerarCvOfertaPayload | None = None):
+    cmd_args = ["ensamblar_cv.py", "--oferta", oferta_id]
+    if body:
+        if body.idioma in ("en", "es"):
+            cmd_args.extend(["--idioma", body.idioma])
+        if body.angulo:
+            cmd_args.extend(["--angulo", body.angulo])
+        if body.usar_ia:
+            cmd_args.append("--usar-ia")
+    res = _run_py(*cmd_args)
     if res.returncode != 0 or "Traceback" in (res.stderr or "") or "PermissionError" in (res.stderr or ""):
         raise HTTPException(status_code=400, detail=res.stderr or res.stdout)
     res_sync = _run_py("estado.py", "sincronizar")
@@ -227,6 +262,50 @@ def generar_cv_oferta(oferta_id: str):
         raise HTTPException(status_code=500, detail=res_sync.stderr or res_sync.stdout)
     _sync_dbs_best_effort()
     return {"ok": True, "stdout": res.stdout}
+
+
+@app.get("/api/ofertas/{oferta_id}/material")
+def obtener_material_oferta(oferta_id: str):
+    """Retorna el contenido de postulaciones/material/{oferta_id}.md si existe."""
+    mat_path = ROOT / "postulaciones" / "material" / f"{oferta_id}.md"
+    if not mat_path.is_file():
+        candidatos = list((ROOT / "postulaciones" / "material").glob(f"*{oferta_id}*.md"))
+        if candidatos:
+            mat_path = candidatos[0]
+    if mat_path and mat_path.is_file():
+        contenido = mat_path.read_text(encoding="utf-8")
+        return {
+            "existe": True,
+            "path": str(mat_path.relative_to(ROOT)),
+            "contenido": contenido,
+            "tiene_preguntas": (
+                "## Respuestas a Preguntas del Formulario" in contenido
+                or "## Respuestas de Formulario" in contenido
+            ),
+        }
+    return {"existe": False, "path": None, "contenido": "", "tiene_preguntas": False}
+
+
+@app.post("/api/ofertas/{oferta_id}/responder-preguntas")
+def responder_preguntas_api(oferta_id: str, body: ResponderPreguntasPayload):
+    """Genera respuestas para screening questions basadas en la verdad del Perfil Maestro."""
+    import asistente_postulacion
+
+    preguntas_texto = body.preguntas.strip()
+    if not preguntas_texto:
+        raise HTTPException(status_code=400, detail="Ingresa al menos una pregunta a responder")
+    try:
+        resultado = asistente_postulacion.responder_preguntas_oferta(
+            oferta_id_o_slug=oferta_id,
+            preguntas_raw=preguntas_texto,
+            idioma=body.idioma or "auto",
+            guardar=body.guardar,
+        )
+        if not resultado.get("ok"):
+            raise HTTPException(status_code=400, detail=resultado.get("error", "Error procesando preguntas"))
+        return resultado
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Error en asistente de postulación: {exc}")
 
 
 @app.get("/api/ofertas/{oferta_id}/grafo")
@@ -366,6 +445,20 @@ def sync_all():
     }
 
 
+@app.post("/api/verificar-links")
+def verificar_links_api():
+    """Verifica contra APIs oficiales (Ashby, Greenhouse, Mercor, micro1) y HTTP en vivo
+    si las ofertas en Evaluada o CV Listo siguen disponibles; descarta automáticamente las cerradas."""
+    res_ver = _run_py("estado.py", "verificar-links", "--auto-descartar", "--limit", "100")
+    res_sync = _run_py("estado.py", "sincronizar")
+    _sync_dbs_best_effort()
+    return {
+        "ok": res_ver.returncode == 0,
+        "output": (res_ver.stdout or "") + (res_ver.stderr or ""),
+        "sync": res_sync.stdout,
+    }
+
+
 @app.post("/api/pipeline/run")
 def run_pipeline(body: PipelinePayload):
     if _pipeline_state["running"]:
@@ -410,7 +503,10 @@ def run_pipeline(body: PipelinePayload):
                     _log("▶ Etapa 1: Rastreo multi-fuente + Filtros Chile/Remoto + Evaluación IA/GraphRAG...")
                     rc = _stream_cmd(cmd)
 
-                _log("▶ Etapa 2: Sincronizando estado canónico, Postgres y Neo4j...")
+                _log("▶ Etapa 2: Verificando que las ofertas activas sigan abiertas en los portales oficiales...")
+                _stream_cmd([sys.executable, str(ROOT / "scripts" / "estado.py"), "verificar-links", "--auto-descartar", "--limit", "100"])
+
+                _log("▶ Etapa 3: Sincronizando estado canónico, Postgres y Neo4j...")
                 _stream_cmd([sys.executable, str(ROOT / "scripts" / "estado.py"), "sincronizar"])
                 _stream_cmd([sys.executable, str(ROOT / "scripts" / "db_sync.py"), "--all"])
                 _pipeline_state["last_exit"] = rc
@@ -434,6 +530,7 @@ def serve_file(rel_path: str):
         (ROOT / "cvs-generados").resolve(),
         (ROOT / "ofertas").resolve(),
         (ROOT / "perfil" / "documentos").resolve(),
+        (ROOT / "postulaciones" / "material").resolve(),
     ]
     if not any(str(target).startswith(str(base)) for base in allowed_roots):
         raise HTTPException(status_code=404, detail="Archivo no disponible")

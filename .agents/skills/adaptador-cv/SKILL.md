@@ -86,7 +86,7 @@ Chile (100% Remote / Global Mobility) | Bilingual English (C1) & Spanish (Native
 ---
 
 ## PROFESSIONAL SUMMARY
-[Párrafo de 4 líneas conectando el perfil de Felipe con los dolores específicos de la oferta y sus 2-3 métricas estrella]
+[Párrafo de 3–4 líneas presentando a Felipe como profesional integral: Ingeniero DevSecOps enfocado en Cloud FinOps (FOCP), con sólida trayectoria en ciberseguridad y aplicación práctica de Inteligencia Artificial, nombrando su ecosistema de herramientas en AWS, seguridad (Wazuh SIEM, Bitdefender XDR, GuardDuty, IAM), IaC (Terraform, Ansible, Karpenter, incident.io) y automatización/IA (Python, Bash, n8n, LLMs). PROHIBIDO poner aquí "experiencia continua desde 2024 en Colektia", "4 cuentas / ~75 usuarios", ni porcentajes o números sueltos.]
 
 ## CORE TECHNICAL SKILLS
 - **[Categoría 1 más relevante para la oferta]:** [Keywords exactas que cruzan entre la oferta y perfil-maestro.md]
@@ -133,6 +133,13 @@ python3 .agents/skills/adaptador-cv/scripts/render_cv.py cvs-generados/YYYY-MM-D
 ### Paso 3b: Material de postulación
 Crea `postulaciones/material/<id-oferta>.md` (también cuando reutilizas un CV existente), en el idioma de la oferta, con la misma regla de veracidad estricta:
 
+**Estilo Humano / Anti-IA (obligatorio en Cover Letter y Nota LinkedIn):**
+- **Texto plano en la cover letter:** nada de negritas (`**`), ni listas con bullets, ni guiones largos (`—`). Solo 2–3 párrafos cortos (≤ 180 palabras).
+- **1 o máximo 2 historias concretas:** elige el caso real de Colektia que mejor responde al dolor principal de la oferta; no metas todas tus métricas juntas.
+- **Tono de ingeniero a ingeniero:** directo, sobrio y técnico, sin adjetivos inflados (*passionate, thrilled, excited, robust, cutting-edge*).
+- **Sin frases de molde:** evita aperturas/cierres tipo *"I am writing to express my interest..."*, *"I thrive in async, remote-first cultures..."* o *"Me dirijo a ustedes con gran entusiasmo..."*. Cierra simple (ej.: *"Happy to walk through how we debugged that NAT/ECS spike if useful. Just applied via Greenhouse."*).
+- **Nota LinkedIn (≤ 260 caracteres):** menciona 1 detalle concreto de la vacante + 1 solo logro tuyo + aviso breve de que postulaste.
+
 ```markdown
 ---
 tipo: material
@@ -143,8 +150,8 @@ generado: 'YYYY-MM-DD'
 # Material de postulación — <Empresa> · <Cargo>
 ## Link para postular
 <url de la ficha>
-## Cover letter (≤ 200 palabras)
-## Nota para el recruiter en LinkedIn (≤ 300 caracteres)
+## Cover letter (≤ 180 palabras, texto plano, 2–3 párrafos)
+## Nota para el recruiter / Hiring Manager en LinkedIn (≤ 260 caracteres)
 ## Respuestas a preguntas frecuentes del formulario
 - Why do you want to work at <Empresa>?
 - Describe a relevant project / achievement.

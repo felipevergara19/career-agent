@@ -68,6 +68,10 @@ services:
       - "8000:8000"   # Dashboard Web + API FastAPI
     volumes:
       # Bind mounts locales: tus archivos, ofertas y PDFs viven en tu repo/host
+      - ./app:/app/app
+      - ./scripts:/app/scripts
+      - ./.agents:/app/.agents
+      - ./agentes.yaml:/app/agentes.yaml
       - ./perfil:/app/perfil
       - ./ofertas:/app/ofertas
       - ./cvs-generados:/app/cvs-generados

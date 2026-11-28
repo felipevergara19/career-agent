@@ -33,6 +33,123 @@ def _slug(text: str, fallback: str = "item") -> str:
     return s[:48] or fallback
 
 
+_STOPWORDS_RAG = {
+    "the", "and", "for", "with", "that", "this", "from", "your", "have", "you", "are", "was", "were",
+    "como", "para", "con", "por", "una", "uno", "unos", "unas", "que", "del", "las", "los", "sobre",
+    "entre", "como", "esta", "este", "pero", "mas", "más", "cual", "cuál", "qué", "how", "what", "why",
+    "when", "where", "who", "tell", "about", "describe", "explain", "experiencia", "experience",
+    "trabajo", "work", "working", "role", "rol", "empresa", "company", "team", "equipo", "using",
+}
+
+
+def _normalizar_tokens_rag(texto: str) -> list[str]:
+    """Tokeniza y normaliza texto (ES/EN) quitando tildes y stopwords para matching híbrido."""
+    s = (texto or "").lower()
+    for a, b in (("á", "a"), ("é", "e"), ("í", "i"), ("ó", "o"), ("ú", "u"), ("ñ", "n")):
+        s = s.replace(a, b)
+    raw = re.findall(r"[a-z0-9][a-z0-9\.\-\+/]{1,}", s)
+    return [t for t in raw if len(t) >= 3 and t not in _STOPWORDS_RAG]
+
+
+def buscar_logros_hibrido(
+    logros: list[dict],
+    texto_consulta: str,
+    angulo: str | None = None,
+    top_k: int = 6,
+) -> list[dict]:
+    """Recuperación híbrida (skills exactos + similitud léxica/BM25-lite + afinidad por ángulo).
+    Permite responder preguntas abiertas aunque no mencionen el nombre literal de un skill."""
+    if not logros:
+        return []
+    texto_low = (texto_consulta or "").lower()
+    q_tokens = set(_normalizar_tokens_rag(texto_consulta))
+    q_stems = {t[:5] for t in q_tokens if len(t) >= 5}
+    ang_norm = (angulo or "").strip().lower()
+
+    # Frecuencia inversa simple sobre los logros para dar más peso a términos específicos
+    doc_freq: dict[str, int] = {}
+    doc_tokens_list: list[set[str]] = []
+    for lg in logros:
+        blob = " ".join([
+            str(lg.get("titulo") or ""),
+            str(lg.get("descripcion") or ""),
+            str(lg.get("metricas") or ""),
+            str(lg.get("ahorro") or ""),
+            " ".join(lg.get("skills") or []),
+        ])
+        dtoks = set(_normalizar_tokens_rag(blob))
+        doc_tokens_list.append(dtoks)
+        for t in dtoks:
+            doc_freq[t] = doc_freq.get(t, 0) + 1
+
+    n_docs = max(len(logros), 1)
+    candidatos: list[dict] = []
+
+    for lg, dtoks in zip(logros, doc_tokens_list):
+        skills = lg.get("skills") or []
+        skills_hits = [
+            s for s in skills
+            if len(str(s)) >= 2 and re.search(r"(?<![a-z0-9])" + re.escape(str(s).lower()) + r"(?![a-z0-9])", texto_low)
+        ]
+
+        # Score por intersección de tokens ponderada por IDF suave
+        token_score = 0.0
+        matched_terms: list[str] = []
+        for t in (q_tokens & dtoks):
+            idf = 1.0 + (n_docs / (1.0 + doc_freq.get(t, 1))) * 0.4
+            token_score += idf
+            matched_terms.append(t)
+
+        # Coincidencia por raíz (ej. automatiz* / automat*, optimiz*, incident*, secur*)
+        if q_stems:
+            dstems = {t[:5] for t in dtoks if len(t) >= 5}
+            stem_hits = q_stems & dstems
+            token_score += len(stem_hits) * 0.6
+
+        # Afinidad por ángulo del rol
+        lg_ang = (lg.get("angulo") or "").strip().lower()
+        ang_bonus = 0.0
+        if ang_norm and ang_norm != "base":
+            if lg_ang == ang_norm:
+                ang_bonus = 3.5
+            elif ang_norm == "devsecops" and lg_ang in ("finops", "secops-siem"):
+                ang_bonus = 1.2
+            elif ang_norm == "finops" and lg_ang == "devsecops":
+                ang_bonus = 0.8
+
+        total_score = len(skills_hits) * 3.0 + token_score + ang_bonus
+        if total_score <= 0:
+            continue
+
+        candidatos.append({
+            "id": lg.get("id"),
+            "titulo": lg.get("titulo"),
+            "ahorro": lg.get("ahorro"),
+            "angulo": lg.get("angulo"),
+            "metricas": lg.get("metricas") or "",
+            "descripcion": lg.get("descripcion") or "",
+            "skills_match": skills_hits or matched_terms[:5],
+            "score_rag": round(total_score, 2),
+        })
+
+    candidatos.sort(key=lambda x: x["score_rag"], reverse=True)
+    # Si nada tuvo score > 0 pero hay ángulo, devolver los logros de ese ángulo como respaldo
+    if not candidatos and ang_norm:
+        por_ang = [lg for lg in logros if (lg.get("angulo") or "").lower() == ang_norm]
+        for lg in por_ang[:top_k]:
+            candidatos.append({
+                "id": lg.get("id"),
+                "titulo": lg.get("titulo"),
+                "ahorro": lg.get("ahorro"),
+                "angulo": lg.get("angulo"),
+                "metricas": lg.get("metricas") or "",
+                "descripcion": lg.get("descripcion") or "",
+                "skills_match": lg.get("skills") or [],
+                "score_rag": 1.0,
+            })
+    return candidatos[:top_k]
+
+
 def _cargar_perfil_y_logros() -> tuple[dict, list[dict], list[str]]:
     """Carga el perfil real del usuario, sus logros verificados y skills desde
     perfil/perfil-estructurado.json (o fallback desde perfil/perfil-maestro.md)."""
@@ -220,16 +337,21 @@ class KnowledgeGraph:
                     continue
 
                 oid = f"oferta:{o['id']}"
+                estado_of = (o.get("estado") or "").strip().lower()
+                motivo_desc = (o.get("motivo_descarte") or "").strip() or None
                 self.add_node(oid, "oferta", {
                     "id_oferta": o["id"],
                     "empresa": o.get("empresa"),
                     "cargo": o.get("cargo"),
-                    "estado": o.get("estado"),
+                    "estado": estado_of or o.get("estado"),
                     "prioridad": o.get("prioridad"),
                     "match_score": o.get("match_score"),
                     "angulo": o.get("angulo"),
                     "salario": o.get("salario"),
-                    "url": o.get("url")
+                    "url": o.get("url"),
+                    "motivo_descarte": motivo_desc,
+                    "fecha_captura": str(o.get("fecha_captura") or ""),
+                    "keywords": [str(k).lower().strip() for k in (o.get("keywords") or []) if str(k).strip()],
                 })
 
                 empresa_id = f"empresa:{_slug(o.get('empresa') or 'empresa')}"
@@ -255,8 +377,17 @@ class KnowledgeGraph:
                         self.add_node(br_id, "brecha", {"descripcion": br_clean})
                     self.add_edge(oid, br_id, "TIENE_BRECHA", weight=1.0)
 
-                if o.get("estado") == "postulado":
+                if estado_of == "postulado":
                     self.add_edge(pid, oid, "POSTULO_A", weight=3.0)
+                elif estado_of == "descartada":
+                    self.add_edge(pid, oid, "DESCARTO_OFERTA", weight=-2.0)
+                    if motivo_desc:
+                        mot_id = f"motivo:{_slug(motivo_desc[:45])}"
+                        if mot_id not in self.nodes:
+                            self.add_node(mot_id, "motivo_descarte", {"motivo": motivo_desc})
+                        self.add_edge(oid, mot_id, "DESCARTADA_POR", weight=2.0)
+                elif estado_of == "rechazada":
+                    self.add_edge(pid, oid, "RECHAZADA_EN", weight=-1.5)
 
             except Exception:
                 continue
@@ -333,6 +464,64 @@ class KnowledgeGraph:
         ordenadas = sorted(conteo_brechas.items(), key=lambda x: x[1], reverse=True)
         return [{"brecha": k, "frecuencia": v} for k, v in ordenadas if v > 0]
 
+    def resumen_aprendizaje_descartes(self, max_ejemplos: int = 12) -> dict:
+        """Consolida patrones aprendidos desde ofertas descartadas por Felipe o por el evaluador."""
+        from collections import Counter
+
+        motivos = Counter()
+        sen_ejemplos: list[dict] = []
+        perfil_ejemplos: list[dict] = []
+        tokens_titulos_desc = Counter()
+        total_desc = 0
+
+        ignorar_tokens = {
+            "engineer", "remote", "remoto", "cloud", "aws", "latam", "chile", "mid", "junior",
+            "analyst", "specialist", "developer", "security", "devops", "devsecops", "finops",
+        }
+        ignorar_motivos = ("expirada", "cerrada", "enlace roto", "404", "not_found", "burocrático")
+
+        descartadas = [
+            n for n in self.nodes.values()
+            if n.get("type") == "oferta" and (n.get("estado") or "").lower() == "descartada"
+        ]
+        descartadas.sort(key=lambda x: str(x.get("fecha_captura") or ""), reverse=True)
+
+        for n in descartadas:
+            total_desc += 1
+            mot = (n.get("motivo_descarte") or "Sin motivo").strip()
+            motivos[mot] += 1
+            cargo = str(n.get("cargo") or "").strip()
+            empresa = str(n.get("empresa") or "").strip()
+            mot_low = mot.lower()
+
+            if any(ig in mot_low for ig in ignorar_motivos):
+                continue
+
+            if any(k in mot_low for k in ("senior", "año", "year", "staff", "lead", "principal", "architect")):
+                if len(sen_ejemplos) < max_ejemplos:
+                    sen_ejemplos.append({"cargo": cargo, "empresa": empresa, "motivo": mot})
+            elif any(k in mot_low for k in ("no calza", "descartada por el usuario", "restringido", "ajena")):
+                if len(perfil_ejemplos) < max_ejemplos:
+                    perfil_ejemplos.append({"cargo": cargo, "empresa": empresa, "motivo": mot})
+
+            for tok in _normalizar_tokens_rag(cargo):
+                if tok not in ignorar_tokens and len(tok) >= 4:
+                    tokens_titulos_desc[tok] += 1
+
+        return {
+            "total_descartadas": total_desc,
+            "motivos_frecuentes": [{"motivo": m, "cantidad": c} for m, c in motivos.most_common(10)],
+            "ejemplos_seniority": sen_ejemplos,
+            "ejemplos_no_calza": perfil_ejemplos,
+            "tokens_frecuentes_en_descartadas": [
+                {"token": t, "cantidad": c} for t, c in tokens_titulos_desc.most_common(12) if c >= 3
+            ],
+        }
+
+    def buscar_contexto(self, texto_consulta: str, angulo: str | None = None, top_k: int = 6) -> list[dict]:
+        """Consulta híbrida sobre los logros cargados en el grafo."""
+        return buscar_logros_hibrido(self.logros, texto_consulta, angulo=angulo, top_k=top_k)
+
     def exportar_mermaid(self, id_o_slug=None):
         nombre = self.perfil_node.get("nombre", "Usuario")
         lines = ["```mermaid", "flowchart TD"]
@@ -361,16 +550,18 @@ class KnowledgeGraph:
         return "\n".join(lines)
 
     def persistir(self):
+        aprendizaje = self.resumen_aprendizaje_descartes()
         data = {
             "total_nodos": len(self.nodes),
             "total_aristas": len(self.edges),
             "nodos": self.nodes,
-            "aristas": self.edges
+            "aristas": self.edges,
+            "aprendizaje_descartes": aprendizaje,
         }
         os.makedirs(os.path.dirname(GRAFO_JSON_PATH), exist_ok=True)
         with open(GRAFO_JSON_PATH, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
-        print(f"✓ Grafo persistido en: {GRAFO_JSON_PATH} ({len(self.nodes)} nodos, {len(self.edges)} conexiones)")
+        print(f"✓ Grafo persistido en: {GRAFO_JSON_PATH} ({len(self.nodes)} nodos, {len(self.edges)} conexiones, {aprendizaje['total_descartadas']} descartes indexados)")
 
 
 def main():
@@ -378,6 +569,7 @@ def main():
     parser.add_argument("--construir", action="store_true", help="Construir o actualizar el grafo desde el repo.")
     parser.add_argument("--match", type=str, help="Encontrar los logros relacionales más fuertes para una oferta: --match <slug-o-id>")
     parser.add_argument("--radar-brechas", action="store_true", help="Mostrar radar de brechas acumuladas en el mercado.")
+    parser.add_argument("--aprendizaje-descartes", action="store_true", help="Mostrar patrones aprendidos de ofertas descartadas.")
     parser.add_argument("--mermaid", type=str, nargs="?", const="default", help="Generar diagrama Mermaid de conexiones.")
 
     args = parser.parse_args()
@@ -385,7 +577,7 @@ def main():
     kg = KnowledgeGraph()
     kg.build_from_repo()
 
-    if args.construir or (not args.match and not args.radar_brechas and not args.mermaid):
+    if args.construir or (not args.match and not args.radar_brechas and not args.aprendizaje_descartes and not args.mermaid):
         kg.persistir()
         return
 
@@ -412,6 +604,19 @@ def main():
         print(f"=======================================================\n")
         for b in brechas[:8]:
             print(f"• [Frecuencia: {b['frecuencia']} ofertas] {b['brecha']}")
+        print()
+
+    if args.aprendizaje_descartes:
+        ap = kg.resumen_aprendizaje_descartes()
+        print(f"\n=======================================================")
+        print(f"🧠 MEMORIA DE APRENDIZAJE DE DESCARTES ({ap['total_descartadas']} ofertas)")
+        print(f"=======================================================\n")
+        for m in ap["motivos_frecuentes"][:8]:
+            print(f"• {m['cantidad']}x {m['motivo']}")
+        if ap["ejemplos_seniority"]:
+            print("\nEjemplos recientes descartados por seniority:")
+            for ej in ap["ejemplos_seniority"][:6]:
+                print(f"  - {ej['cargo']} ({ej['empresa']}) -> {ej['motivo']}")
         print()
 
     if args.mermaid:

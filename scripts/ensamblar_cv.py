@@ -102,17 +102,29 @@ def _adaptar_con_ia_si_disponible(
 
     idioma_txt = "English" if idioma == "en" else "Spanish (Español)"
     oferta_ctx = json.dumps(oferta_meta, ensure_ascii=False, indent=2) if oferta_meta else f"Base CV focused on area '{angulo}'"
+
+    texto_q = " ".join(
+        str(x) for x in [
+            (oferta_meta or {}).get("cargo", ""),
+            angulo,
+            " ".join((oferta_meta or {}).get("keywords") or []),
+        ]
+        if x
+    )
+    logros_rag = evaluador_ia.consultar_grafo_contexto(texto_q, angulo=angulo, top_k=6)
+
     perfil_ctx = json.dumps(
         {
             "titular_principal": perfil.get("titular_principal"),
             "resumen_profesional": perfil.get("resumen_profesional"),
+            "historia_libre": perfil.get("historia_libre"),
             "skills": perfil.get("skills"),
             "experiencias": perfil.get("experiencias"),
-            "impact_log": perfil.get("impact_log"),
+            "logros_rag_prioritarios": logros_rag,
         },
         ensure_ascii=False,
         indent=2,
-    )[:12000]
+    )
 
     prompt = f"""Eres un redactor experto en CVs optimizados para ATS (Applicant Tracking Systems).
 Adapta el CV del candidato al idioma **{idioma_txt}** y al objetivo indicado.

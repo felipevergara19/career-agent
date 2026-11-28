@@ -755,19 +755,17 @@
           </div>
 
           <div class="flex flex-wrap gap-1.5 text-[10px] font-mono text-zinc-400">
-            <span class="px-2 py-0.5 rounded bg-canvas hairline text-emerald-400">Get on Board (CL)</span>
+            <span class="px-2 py-0.5 rounded bg-canvas hairline text-emerald-400">Get on Board (CL/LatAm)</span>
+            <span class="px-2 py-0.5 rounded bg-canvas hairline text-emerald-400">FinOps Foundation</span>
             <span class="px-2 py-0.5 rounded bg-canvas hairline text-emerald-400">Teamtailor (CL)</span>
-            <span class="px-2 py-0.5 rounded bg-canvas hairline text-violet-300">Ashby (FinOps)</span>
-            <span class="px-2 py-0.5 rounded bg-canvas hairline text-amber-300">Mercor / micro1 / Outlier / DataAnnotation (AI Eval)</span>
+            <span class="px-2 py-0.5 rounded bg-canvas hairline text-violet-300">Ashby (FinOps/Cloud)</span>
+            <span class="px-2 py-0.5 rounded bg-canvas hairline text-violet-300">Wazuh Careers</span>
             <span class="px-2 py-0.5 rounded bg-canvas hairline">Greenhouse</span>
             <span class="px-2 py-0.5 rounded bg-canvas hairline">Lever (CL/LatAm)</span>
-            <span class="px-2 py-0.5 rounded bg-canvas hairline">Breezy</span>
-            <span class="px-2 py-0.5 rounded bg-canvas hairline">SmartRecruiters</span>
+            <span class="px-2 py-0.5 rounded bg-canvas hairline">SmartRecruiters + Workable</span>
             <span class="px-2 py-0.5 rounded bg-canvas hairline">WeWorkRemotely</span>
-            <span class="px-2 py-0.5 rounded bg-canvas hairline">Jobicy</span>
-            <span class="px-2 py-0.5 rounded bg-canvas hairline">RemoteOK</span>
-            <span class="px-2 py-0.5 rounded bg-canvas hairline">Remotive</span>
-            <span class="px-2 py-0.5 rounded bg-canvas hairline">Himalayas</span>
+            <span class="px-2 py-0.5 rounded bg-canvas hairline">Jobicy / RemoteOK / Remotive / Himalayas</span>
+            <span class="px-2 py-0.5 rounded bg-canvas hairline text-amber-300">AI Eval (carril acotado)</span>
           </div>
 
           <div class="grid grid-cols-2 gap-2.5">
@@ -783,11 +781,11 @@
               </select>
             </div>
             <div>
-              <label class="block text-[11px] text-zinc-400 mb-1">Tope a evaluar con IA</label>
+              <label class="block text-[11px] text-zinc-400 mb-1">Tope a evaluar con IA (tras Triaje)</label>
               <select id="pipe-max" class="w-full bg-canvas hairline rounded-lg px-2.5 py-2 text-xs text-zinc-200">
-                <option value="5">5 ofertas nuevas (rápido)</option>
-                <option value="12" selected>12 ofertas nuevas</option>
-                <option value="25">25 ofertas nuevas</option>
+                <option value="10">10 ofertas nuevas (rápido)</option>
+                <option value="20" selected>20 ofertas nuevas (recomendado)</option>
+                <option value="35">35 ofertas nuevas (barrido amplio)</option>
               </select>
             </div>
           </div>
@@ -842,6 +840,30 @@
           <h2 class="text-sm font-semibold text-rose-400">Brechas prioritarias de mercado</h2>
           <p class="text-xs text-zinc-400">Skills muy pedidos por las ofertas donde aún no tienes un logro vinculado en el grafo.</p>
           <div id="radar-brechas" class="flex flex-wrap gap-2 pt-1"></div>
+        </div>
+      </div>
+
+      <!-- Embudo de Conversión por Ángulo, Portal y Tipo de CV -->
+      <div class="bg-surface hairline rounded-xl p-5 space-y-4">
+        <div class="flex items-center justify-between">
+          <div>
+            <h2 class="text-sm font-semibold text-zinc-100">Embudo &amp; Conversión (Postulado → Entrevista)</h2>
+            <p class="text-[11px] text-zinc-400">Rendimiento real por enfoque, portal de origen y tipo de CV enviado.</p>
+          </div>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+          <div class="bg-canvas hairline rounded-lg p-3 space-y-2">
+            <div class="text-[11px] font-semibold uppercase tracking-wider text-indigo-400">Por Ángulo</div>
+            <div id="analytics-angulo" class="space-y-1.5 font-mono text-[11px]"></div>
+          </div>
+          <div class="bg-canvas hairline rounded-lg p-3 space-y-2">
+            <div class="text-[11px] font-semibold uppercase tracking-wider text-emerald-400">Por Tipo de CV</div>
+            <div id="analytics-cv" class="space-y-1.5 font-mono text-[11px]"></div>
+          </div>
+          <div class="bg-canvas hairline rounded-lg p-3 space-y-2">
+            <div class="text-[11px] font-semibold uppercase tracking-wider text-amber-400">Top Portales</div>
+            <div id="analytics-portal" class="space-y-1.5 font-mono text-[11px]"></div>
+          </div>
         </div>
       </div>
 
@@ -1289,6 +1311,7 @@
       <div class="bg-canvas hairline rounded-xl p-3.5">
         <div class="text-[11px] font-semibold uppercase tracking-wider text-indigo-400 mb-2">Keywords ATS</div>
         <div id="d-keywords" class="flex flex-wrap gap-1.5"></div>
+        <div id="d-kw-gap" class="mt-2 pt-2 hairline-t space-y-1.5 text-[11px]"></div>
       </div>
     </div>
 
@@ -1532,9 +1555,10 @@
     }
 
     async function loadData() {
-      const [ofertas, grafo] = await Promise.all([
+      const [ofertas, grafo, analytics] = await Promise.all([
         fetch("/api/ofertas").then(x => x.json()),
         fetch("/api/grafo/stats").then(x => x.json()),
+        fetch("/api/analytics").then(x => x.json()).catch(() => null),
       ]);
       OFERTAS = ofertas;
       const activas = ofertas.filter(o => !["descartada", "rechazada"].includes(o.estado));
@@ -1556,12 +1580,38 @@
         `<span class="text-xs font-mono px-2.5 py-1 rounded-lg bg-rose-500/10 border border-rose-500/25 text-rose-300">${s.skill} <span class="text-rose-400">· ${s.demanda}</span></span>`
       ).join("") || '<span class="text-xs text-zinc-500">Sin brechas detectadas</span>';
 
+      if (analytics) renderAnalytics(analytics);
+
       renderBoard();
       renderArchivo();
       if (SELECTED) {
         const updated = OFERTAS.find(o => o.id === SELECTED.id);
         if (updated) openDrawer(updated);
       }
+    }
+
+    function renderAnalytics(a) {
+      const fmtRows = (rows) => (rows || []).slice(0, 6).map(r => `
+        <div class="flex items-center justify-between gap-2 text-zinc-300">
+          <span class="truncate" title="${r.nombre}">${r.nombre}</span>
+          <span class="shrink-0 tabular text-zinc-400">${r.postuladas} post · <span class="${r.entrevistas > 0 ? 'text-emerald-400' : 'text-zinc-500'}">${r.entrevistas} ent (${r.tasa_entrevista_pct}%)</span></span>
+        </div>`).join("") || '<div class="text-zinc-500">Sin datos</div>';
+      const elA = document.getElementById("analytics-angulo");
+      const elC = document.getElementById("analytics-cv");
+      const elP = document.getElementById("analytics-portal");
+      if (elA) elA.innerHTML = fmtRows(a.por_angulo);
+      if (elC) elC.innerHTML = fmtRows(a.por_tipo_cv);
+      if (elP) elP.innerHTML = fmtRows(a.por_portal);
+    }
+
+    function freshnessBadge(o) {
+      const f = o.fecha_publicacion || o.fecha_captura;
+      if (!f) return "";
+      const dias = Math.max(0, Math.floor((Date.now() - new Date(f + "T00:00:00").getTime()) / 86400000));
+      if (Number.isNaN(dias)) return "";
+      if (dias <= 2) return `<span class="font-mono text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/25" title="Publicada/capturada hace ${dias}d">🆕 ${dias}d</span>`;
+      if (dias >= 30) return `<span class="font-mono text-[10px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/25" title="Lleva ${dias}d abierta (posible ghost job)">👻 ${dias}d</span>`;
+      return `<span class="font-mono text-[10px] text-zinc-500">${dias}d</span>`;
     }
 
     function cvPdfUrl(cvPath) {
@@ -1596,7 +1646,7 @@
     }
 
     async function ejecutarMovimiento(id, body) {
-      toast(body.estado === "cv_generado" ? "Moviendo y preparando CV PDF..." : `Moviendo a ${body.estado}...`);
+      toast(`Moviendo a ${body.estado}...`);
       const r = await fetch(`/api/ofertas/${encodeURIComponent(id)}/mover`, {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)
       });
@@ -1730,7 +1780,10 @@
             <div class="text-[13px] font-medium text-zinc-100 leading-snug line-clamp-2">${o.cargo}</div>
             <div class="text-[11px] text-zinc-500 truncate">${o.modalidad || "Por confirmar"}</div>
             <div class="flex items-center justify-between pt-1 hairline-t text-[10px] text-zinc-500">
-              <span class="font-mono px-1.5 py-0.5 rounded bg-canvas hairline text-zinc-400">${o.angulo || "base"}</span>
+              <div class="flex items-center gap-1.5">
+                <span class="font-mono px-1.5 py-0.5 rounded bg-canvas hairline text-zinc-400">${o.angulo || "base"}</span>
+                ${freshnessBadge(o)}
+              </div>
               <div class="flex items-center gap-2">
                 ${o.cv ? `<span class="text-emerald-400 font-medium">PDF</span>` : ""}
                 ${o.url ? `<a href="${o.url}" target="_blank" onclick="event.stopPropagation()" class="hover:text-indigo-400">↗</a>` : ""}
@@ -1781,6 +1834,18 @@
       document.getElementById("d-keywords").innerHTML = (o.keywords || []).map(k =>
         `<span class="text-[11px] font-mono px-2 py-0.5 rounded bg-elevated hairline text-zinc-300">${k}</span>`
       ).join("") || '<span class="text-zinc-500">-</span>';
+
+      const gapEl = document.getElementById("d-kw-gap");
+      if (gapEl) {
+        gapEl.innerHTML = '<span class="text-zinc-500 font-mono">Calculando cobertura ATS...</span>';
+        fetch(`/api/ofertas/${encodeURIComponent(o.id)}/keyword-gap`).then(x => x.json()).then(g => {
+          if (!g.total) { gapEl.innerHTML = ""; return; }
+          const cls = g.cobertura_pct >= 70 ? "text-emerald-300" : g.cobertura_pct >= 40 ? "text-amber-300" : "text-rose-300";
+          const faltan = (g.en_perfil_falta_cv || []).map(k => `<span class="px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30 font-mono">${k}</span>`).join(" ");
+          gapEl.innerHTML = `<div class="flex items-center justify-between"><span class="text-zinc-400">Cobertura ATS (${g.cv_usado.split('/').pop()}):</span><span class="font-mono font-semibold ${cls}">${g.cobertura_pct}% (${g.en_cv.length}/${g.total})</span></div>`
+            + (faltan ? `<div class="text-zinc-400">En tu perfil pero falta en este CV: ${faltan}</div>` : "");
+        }).catch(() => { gapEl.innerHTML = ""; });
+      }
 
       const pdf = cvPdfUrl(o.cv);
       document.getElementById("d-pdf-link").classList.toggle("hidden", !pdf);

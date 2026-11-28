@@ -1,117 +1,153 @@
-# Catálogo de empresas y ATS para rastreo directo de vacantes (100% verificado en vivo)
-# Organizado por ATS con API pública (0 tokens de captura) + foco Chile/LatAm/FinOps/AWS.
-
 greenhouse:
-  # FinOps, Cloud, DevSecOps & Remote-First Global
-  - doitintl        # DoiT International (AWS Premier Partner + FinOps líder)
-  - canonical
-  - datadog
-  - gitlab
-  - caylent         # AWS Premier Partner
-  - ramp
-  - remote
-  - grafana
-  - automattic
-  - elastic
-  - hashicorp
-  - crowdstrike
-  - wiz
-  - sentry
-  - zapier
-  - cloudflare
-  - auth0
-  - tailscale       # 100% Global Remote
-  - vercel
-  - chainguard      # DevSecOps
-  - fivetran
-  # Chile & LatAm Best Places to Work / Fintech / Tech
-  - clara           # Fintech LatAm
-  - vtex            # Tech LatAm
-  - cabify          # Chile / LatAm
-  - thoughtworks    # GPTW Chile / LatAm
-
+- doitintl
+- archera
+- canonical
+- datadog
+- gitlab
+- caylent
+- ramp
+- remote
+- grafanalabs
+- elastic
+- wizinc
+- cloudflare
+- okta
+- tailscale
+- vercel
+- chainguard
+- fivetran
+- tines
+- torq
+- expel
+- huntress
+- launchdarkly
+- pagerduty
+- sumologic
+- coursera
+- togetherai
+- turing
+- toloka
+- labelbox
+- invisible
+- wizeline
+- sezzle
+- clara
+- vtex
+- cabify
+- arionkoder
+- securityscorecard
+- alpaca
+- backblaze
+- wysh
 ashby:
-  # FinOps & Cloud Cost Especialistas (Nicho #1)
-  - cloudzero       # Plataforma líder de Cloud FinOps
-  - finout          # Plataforma líder de Cloud FinOps
-  - vantage         # Plataforma líder de Cloud FinOps
-  # Remote-First Global, AI & DevSecOps
-  - supabase        # 100% Work from Anywhere
-  - posthog         # 100% Work from Anywhere
-  - snyk            # DevSecOps
-  - n8n
-  - ashby
-  - truelogic       # Remote LatAm
-  - linear
-  - replicate
-  - together-ai
-  - modal
-  - mistral
-  - perplexity
-  - cursor
-  - airbyte
-  - astronomer
-  # LatAm Fintech & Best Places to Work
-  - nubank          # Fintech LatAm
-  - belvo           # Open Finance LatAm
-  - simetrik        # Fintech LatAm
-  - kueski          # Fintech LatAm
-  - thoughtworks    # GPTW Chile / LatAm
-
+- cloudzero
+- finout
+- vantage
+- antimetal
+- ternary
+- cloudcapital
+- voodoo
+- temporal
+- render
+- coder
+- baseten
+- supabase
+- posthog
+- sentry
+- zapier
+- snyk
+- drata
+- vanta
+- n8n
+- ashby
+- truelogic
+- andela
+- flock
+- lemon-io
+- terminal
+- plaid
+- linear
+- modal
+- perplexity
+- cursor
+- airbyte
+- astronomer
+- toku
+- nubank
+- belvo
+- simetrik
+- kueski
+- thoughtworks
+- wynd-labs
+- trmlabs
+- rehire
+- scale-army
 lever:
-  # Chile & LatAm Fintech / Tech
-  - fintual         # Chile (Fintech GPTW)
-  - xepelin         # Chile (Fintech Soonicorn)
-  - toku            # Chile (Fintech)
-  - despegar        # LatAm
-  - kavak           # LatAm
-  # Global Remote
-  - klarna
-  - kraken
-  - postman
-  - plaid
-  - coursera
-
+- fintual
+- xepelin
+- toku
+- despegar
+- kavak
+- bluecoding
+- toptal
+- anomali
 teamtailor:
-  # Top Fintechs & Tech de Chile (RSS público directo)
-  - global66        # Chile (Fintech)
-  - betterfly       # Chile (Unicornio)
-  - tenpo           # Chile (Fintech)
-  - neat            # Chile (Fintech)
-
+- global66
+- betterfly
+- tenpo
+- neat
 breezy:
-  # Chile Empresas B / Fintech
-  - cumplo          # Chile (Fintech Empresa B)
-
+- cumplo
 smartrecruiters:
-  # Chile & LatAm Tech
-  - acidlabs        # Chile (Consultora Tech GPTW)
-  - uber            # Hub Ingeniería Chile (ex-Cornershop)
-
+- acidlabs
+- endava
+- nclouds
+- uber
+workable:
+- azumo
+recruitee:
+- hetzner
+rippling:
+- rippling
+pinpoint: []
 portales_directos:
-  # Portales integrados en rastrear_ats.py (APIs/RSS públicos)
-  - nombre: Get on Board (Chile & LatAm Remoto)
-    url_base: https://www.getonbrd.com/api/v0/search/jobs
-  - nombre: We Work Remotely (DevOps & Backend RSS)
-    url_base: https://weworkremotely.com/categories/remote-devops-sysadmin-jobs.rss
-  - nombre: Jobicy (Remote Tech JSON)
-    url_base: https://jobicy.com/api/v2/remote-jobs
-  - nombre: RemoteOK
-    url_base: https://remoteok.com/api
-  - nombre: Remotive
-    url_base: https://remotive.com/api/remote-jobs
-  - nombre: Himalayas
-    url_base: https://himalayas.app/jobs/api
-  # Referencia manual / URL Analyzer (sin API JSON abierta aún — top GPTW Chile & FinOps)
-  - nombre: Mercado Libre Chile (GPTW #1 Chile)
-    url_base: https://mercadolibre.eightfold.ai/careers
-  - nombre: Buk (GPTW Chile)
-    url_base: https://www.takealuk.com/
-  - nombre: Fintoc (Chile Fintech)
-    url_base: https://fintoc.com/careers
-  - nombre: NotCo (Chile Unicornio)
-    url_base: https://notco.com/notco-squad
-  - nombre: Wazuh (Remote Global SIEM/AWS)
-    url_base: https://wazuh.com/careers/
-  - nombre: FinOps Foundation Job Board
-    url_base: https://jobs.finops.org/
+- nombre: Get on Board (Chile & LatAm Remoto)
+  url_base: https://www.getonbrd.com/api/v0/search/jobs
+- nombre: We Work Remotely (DevOps & Backend RSS)
+  url_base: https://weworkremotely.com/categories/remote-devops-sysadmin-jobs.rss
+- nombre: Jobicy (Remote Tech JSON por tema y LatAm)
+  url_base: https://jobicy.com/api/v2/remote-jobs
+- nombre: RemoteOK (por tags devops/cloud/security/aws)
+  url_base: https://remoteok.com/api
+- nombre: Remotive (categorías + búsqueda por tema)
+  url_base: https://remotive.com/api/remote-jobs
+- nombre: Himalayas (búsqueda por tema + recientes)
+  url_base: https://himalayas.app/jobs/api/search
+- nombre: Working Nomads (Remote Global JSON)
+  url_base: https://www.workingnomads.com/api/exposed_jobs/
+- nombre: Mercado Libre Chile (GPTW
+  url_base: https://mercadolibre.eightfold.ai/careers
+- nombre: Buk (GPTW Chile)
+  url_base: https://www.takealuk.com/
+- nombre: Fintoc (Chile Fintech)
+  url_base: https://fintoc.com/careers
+- nombre: NotCo (Chile Unicornio)
+  url_base: https://notco.com/notco-squad
+- nombre: Wazuh (Remote Global SIEM/AWS)
+  url_base: https://wazuh.com/careers/
+- nombre: FinOps Foundation Job Board
+  url_base: https://jobs.finops.org/
+- nombre: Mercor (AI Expert & Evaluator Networks — Hourly USD)
+  url_base: https://work.mercor.com/explore
+- nombre: micro1 (Remote AI Training & Agent Evaluation Jobs — Hourly USD)
+  url_base: https://www.micro1.ai/jobs
+- nombre: Turing (AI Trainer & Domain Experts Network — Hourly USD)
+  url_base: https://www.turing.com/jobs
+- nombre: DataAnnotation.tech (Bilingual EN/ES & Python Coding AI Evaluator)
+  url_base: https://www.dataannotation.tech/
+- nombre: Outlier.ai (Scale AI — LatAm Spanish & Coding AI Trainer)
+  url_base: https://app.outlier.ai/en/expert/jobs
+- nombre: Alignerr (Labelbox — Spanish & Technical AI Trainer)
+  url_base: https://www.alignerr.com/jobs
+- nombre: Mindrift by Toloka (AI Tutor & Prompt Evaluator)
+  url_base: https://mindrift.ai/apply

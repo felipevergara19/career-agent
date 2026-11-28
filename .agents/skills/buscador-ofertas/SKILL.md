@@ -37,12 +37,15 @@ Eres el **Especialista en Inteligencia y Búsqueda de Ofertas Laborales** de Fel
 
 ## 2. Procedimiento de Búsqueda Diaria
 
-### Paso 0: Rastrear APIs de ATS Oficiales (Ashby, Greenhouse, Lever)
-Antes de buscar en la web, consulta directamente las vacantes activas oficiales de las empresas del catálogo con:
+### Paso 0: Rastrear APIs de ATS y Portales Oficiales (14 fuentes + Triaje IA + Caché)
+Antes de buscar en la web abierta, consulta y evalúa las vacantes activas oficiales (Ashby, Greenhouse, Lever, Teamtailor, SmartRecruiters, Workable, Breezy, FinOps Foundation, Wazuh, Get on Board con empresas expandidas, WWR, Jobicy, Remotive, RemoteOK, Himalayas y carril acotado AI Eval) ejecutando:
 ```bash
-python3 scripts/rastrear_ats.py --buscar --foco finops
+python3 scripts/rastrear_ats.py --buscar --crear-ofertas --max-eval 25
 ```
-*(o `--foco todos` para los 4 ángulos)*. Esto consulta en segundos miles de vacantes directamente desde las APIs de ATS, garantizando enlaces 100% vivos y oficiales.
+*(agrega `--foco finops` si buscas un ángulo puntual, o `--doctor` para auditar salud de `empresas-target.yaml`)*. Este comando:
+1. Deduplica primero contra `ofertas/` y contra el caché persistente `postulaciones/.seen-urls.json` (evita re-evaluar descartes previos).
+2. Aplica filtros duros deterministas solo sobre hechos inequívocos (`titulo` para exclusiones de rol/seniority).
+3. Ejecuta un **Triaje IA en lote** sobre un pool amplio de candidatas antes de puntuar en profundidad con rúbrica + Neo4j GraphRAG.
 
 > **Auto-descubrimiento continuo:** Cada vez que encuentres una empresa nueva en LinkedIn, Get on Board o internet que use Greenhouse, Ashby o Lever, regístrala automáticamente en el catálogo ejecutando:
 > ```bash

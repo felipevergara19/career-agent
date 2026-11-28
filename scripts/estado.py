@@ -456,8 +456,16 @@ def cmd_sincronizar(_args=None) -> int:
     if res.returncode != 0:
       print(f"[ERROR] actualizar_excel.py falló:\n{res.stderr}")
       return 1
+
+    # Reconstruir grafo de conocimiento y memoria de aprendizaje de descartes
+    grafo_script = Path(__file__).resolve().parent / "grafo.py"
+    if grafo_script.exists():
+      g_res = subprocess.run([sys.executable, str(grafo_script), "--construir"], capture_output=True, text=True)
+      if g_res.returncode != 0:
+        print(f"[WARN] grafo.py --construir falló:\n{g_res.stderr}")
+
     print(f"✓ Sincronizado: {len(ofertas)} ofertas → {rel(ESTADO_CSV)}, {rel(HISTORIAL_JSON)}, "
-          f"{rel(TRACKER_MD)}, XLSX/CSV")
+          f"{rel(TRACKER_MD)}, XLSX/CSV y grafo")
     return 0
 
 

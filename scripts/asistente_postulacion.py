@@ -26,6 +26,7 @@ import evaluador_ia  # noqa: E402
 PERFIL_PATH = ROOT / "perfil" / "perfil-maestro.md"
 PREF_PATH = ROOT / "perfil" / "preferencias.md"
 STRUCTURED_PATH = ROOT / "perfil" / "perfil-estructurado.json"
+CV_BLOQUES_PATH = ROOT / "perfil" / "cv-bloques.yaml"
 MATERIAL_DIR = ROOT / "postulaciones" / "material"
 
 
@@ -245,18 +246,78 @@ def responder_heuristicas(pregunta: str, oferta: dict, idioma: str) -> dict:
     }
 
 
-def responder_con_ia(preguntas: list[str], oferta: dict, idioma: str, logros_grafo: list[dict]) -> list[dict]:
+def _cargar_contexto_angulo_y_cv(oferta: dict, idioma: str) -> str:
+    """Carga los bloques curados de cv-bloques.yaml para el ángulo de la oferta y el CV adaptado si existe."""
+    partes: list[str] = []
+    angulo = (oferta.get("angulo") or "base").strip().lower()
+    lang = "en" if idioma == "en" else "es"
+
+    if CV_BLOQUES_PATH.exists():
+        try:
+            bloques = yaml.safe_load(CV_BLOQUES_PATH.read_text(encoding="utf-8")) or {}
+            ang_map = bloques.get("angulos") or {}
+            datos_ang = ang_map.get(angulo) or ang_map.get("finops") or {}
+            sec = datos_ang.get(lang) or datos_ang.get("es") or {}
+            if sec:
+                partes.append(f"ENFOQUE DEL ÁNGULO ({angulo} / {lang.upper()}):")
+                if sec.get("titular"):
+                    partes.append(f"- Titular: {sec['titular']}")
+                if sec.get("resumen"):
+                    partes.append(f"- Resumen: {sec['resumen']}")
+                for exp in (sec.get("experiencias") or [])[:2]:
+                    partes.append(f"- {exp.get('empresa')} ({exp.get('cargo')}):")
+                    for b in (exp.get("bullets") or [])[:6]:
+                        partes.append(f"  * {b}")
+        except Exception:
+            pass
+
+    cv_rel = oferta.get("cv")
+    if cv_rel:
+        cv_path = ROOT / str(cv_rel)
+        if cv_path.exists():
+            try:
+                cv_txt = cv_path.read_text(encoding="utf-8")
+                if cv_txt.startswith("---"):
+                    cv_parts = cv_txt.split("---", 2)
+                    cv_txt = cv_parts[2].strip() if len(cv_parts) > 2 else cv_txt
+                partes.append("CV ADAPTADO PARA ESTA OFERTA:\n" + cv_txt[:3500])
+            except Exception:
+                pass
+
+    return "\n".join(partes)
+
+
+def responder_con_ia(preguntas: list[str], oferta: dict, idioma: str, logros_por_pregunta: dict[str, list[dict]] | list[dict]) -> list[dict]:
     """Invoca al LLM mediante el rol 'asistente-postulacion' para generar respuestas profundas y verídicas."""
     empresa = oferta.get("empresa") or "la empresa"
     cargo = oferta.get("cargo") or "el rol"
+    angulo = oferta.get("angulo") or "base"
     salario_of = oferta.get("salario") or "Por confirmar"
     cuerpo_of = oferta.get("_cuerpo") or ""
 
     perfil_raw = PERFIL_PATH.read_text(encoding="utf-8") if PERFIL_PATH.exists() else ""
     pref_raw = PREF_PATH.read_text(encoding="utf-8") if PREF_PATH.exists() else ""
+    contexto_angulo = _cargar_contexto_angulo_y_cv(oferta, idioma)
 
-    # Extraer logros de apoyo
-    logros_txt = "\n".join([f"- {l.get('titulo')}: {l.get('ahorro', '')} (Skills: {', '.join(l.get('skills_match', []))})" for l in logros_grafo])
+    # Formatear logros recuperados por pregunta (GraphRAG híbrido)
+    if isinstance(logros_por_pregunta, dict):
+        bloques_rag = []
+        for idx, q in enumerate(preguntas, 1):
+            lgs = logros_por_pregunta.get(q) or []
+            if lgs:
+                items = "\n".join(
+                    f"  - [{l.get('angulo')}] {l.get('titulo')}: {l.get('metricas') or l.get('ahorro', '')} (Match: {', '.join(l.get('skills_match', []))})"
+                    for l in lgs
+                )
+            else:
+                items = "  - Sin match específico; usar hechos relevantes del Perfil Maestro."
+            bloques_rag.append(f"Pregunta {idx}: {q}\n{items}")
+        logros_txt = "\n".join(bloques_rag)
+    else:
+        logros_txt = "\n".join(
+            f"- [{l.get('angulo')}] {l.get('titulo')}: {l.get('metricas') or l.get('ahorro', '')} (Match: {', '.join(l.get('skills_match', []))})"
+            for l in logros_por_pregunta
+        )
 
     preguntas_str = "\n".join([f"{idx+1}. {q}" for idx, q in enumerate(preguntas)])
 
@@ -266,6 +327,7 @@ Tu tarea es redactar las respuestas para el formulario de postulación del porta
 DATOS DE LA VACANTE:
 - Empresa: {empresa}
 - Cargo: {cargo}
+- Ángulo del rol: {angulo}
 - Salario anunciado: {salario_of}
 - Descripción / Requisitos:
 {cuerpo_of[:3500]}
@@ -276,27 +338,26 @@ PREGUNTAS DEL FORMULARIO A RESPONDER:
 IDIOMA DE RESPUESTA:
 Debes responder en {"INGLÉS (English C1 fluido, natural, profesional)" if idioma == "en" else "ESPAÑOL (profesional, técnico, formal)"}.
 
-PERFIL MAESTRO DE FELIPE (FUENTE DE VERDAD OBLIGATORIA):
-{perfil_raw[:4500]}
+PERFIL MAESTRO COMPLETO DE FELIPE (FUENTE DE VERDAD OBLIGATORIA):
+{perfil_raw}
+
+{contexto_angulo}
 
 PREFERENCIAS DEL CANDIDATO:
 {pref_raw[:1500]}
 
-LOGROS RELEVANTES DEL GRAFO (GRAPHRAG):
+LOGROS RELEVANTES RECUPERADOS DEL GRAFO POR PREGUNTA (GRAPHRAG HÍBRIDO):
 {logros_txt or 'No hay logros directos adicionales en grafo.'}
 
-REGLAS DE ORO DE VERACIDAD (ZERO HALLUCINATION - CRÍTICO):
-1. VERACIDAD ESTRICTA: Usa ÚNICAMENTE hechos reales de Felipe.
-   - Trabajo actual: DevSecOps & Cloud FinOps Engineer en Colektia (desde mayo 2026; antes Cybersecurity & AI Engineer desde 2024).
-   - Logros cuantificables: ~$2,500 USD/mes ahorro Savings Plans (99.3% uso); 31 tasks ECS zombie erradicadas + VPC Endpoints en producción (~22 TB/mes NAT Gateway); -40% logs CloudWatch; -50% Redis ElastiCache; clúster Wazuh 4.14.10 SIEM (-70% disco saturado, erradicación de cryptominer); flujos Python+n8n+LLM (~10.000 llamadas/día).
-   - Certificaciones reales: FinOps Certified Practitioner (FOCP), Google Data Analytics, Google Cybersecurity, IBM AI Developer, Scrum Fundamentals.
-   - Títulos: Ingeniería en Computación e Informática (UNAB), Traductor-Intérprete Inglés-Español (EATRI).
-2. MANEJO DE BRECHAS: Si una pregunta indaga sobre una herramienta que Felipe NO domina o no tiene en producción (ej. GCP, Azure, Kubernetes avanzado a bajo nivel), NUNCA inventar. Ser transparente y pivotar con elegancia hacia su experiencia equivalente en AWS y su comprobada capacidad de autoaprendizaje.
-3. SALARIO:
+REGLAS DE ORO DE VERACIDAD Y ADAPTACIÓN (ZERO HALLUCINATION - CRÍTICO):
+1. VERACIDAD ESTRICTA: Usa ÚNICAMENTE hechos, experiencias, fechas, títulos, certificaciones y métricas que aparecen en el PERFIL MAESTRO COMPLETO y los LOGROS RECUPERADOS DEL GRAFO. Nunca inventes herramientas, años ni métricas.
+2. ADAPTACIÓN AL ÁNGULO ({angulo}) Y VARIEDAD DE EJEMPLOS: No repitas siempre los mismos 2 ejemplos de FinOps si la pregunta o el rol apunta a SecOps/Wazuh/GuardDuty, AI Automation (n8n/Python/LLMs/RAG), IAM/DevSecOps, soporte/seguridad crypto (Trollbox) o traducción/evaluación bilingüe. Elige para cada pregunta los logros recuperados por GraphRAG que mejor respondan esa pregunta específica.
+3. MANEJO DE BRECHAS: Si una pregunta indaga sobre una herramienta que Felipe NO domina o no tiene en producción (ej. GCP, Azure, Kubernetes avanzado a bajo nivel), NUNCA inventar. Ser transparente y pivotar con elegancia hacia su experiencia equivalente en AWS y su comprobada capacidad de autoaprendizaje.
+4. SALARIO:
    - En Chile: $2.600.000 a $3.200.000 CLP líquidos/mes.
    - Internacional / USD: $3,000 a $4,500 USD/mes (contractor remoto B2B, conversable).
-4. DISPONIBILIDAD: Santiago, Chile. 100% Remoto. Preaviso estándar de 2 semanas en Colektia.
-5. ESTILO: Humano, conciso, orientado a resultados (STAR), sin clichés de IA. Cada respuesta debe tener entre 1 y 3 párrafos concisos, lista para ser copiada directamente al portal.
+5. DISPONIBILIDAD: Santiago, Chile. 100% Remoto. Preaviso estándar de 2 semanas en Colektia.
+6. ESTILO: Humano, conciso, orientado a resultados (STAR), sin clichés de IA. Cada respuesta debe tener entre 1 y 3 párrafos concisos, lista para ser copiada directamente al portal.
 
 FORMATO DE SALIDA REQUERIDO:
 Responde ÚNICAMENTE con un JSON válido con este esquema exacto:
@@ -418,16 +479,19 @@ def responder_preguntas_oferta(
 
     idioma_res = detectar_idioma_preferido(preguntas_raw, oferta, idioma_req=idioma)
 
-    # Contexto GraphRAG
-    texto_consulta = f"{oferta.get('cargo', '')} {' '.join(preguntas)}"
-    logros = evaluador_ia.consultar_grafo_contexto(texto_consulta)
+    # Contexto GraphRAG híbrido por cada pregunta + ángulo de la oferta
+    angulo_of = (oferta.get("angulo") or "").strip().lower() or None
+    logros_por_pregunta: dict[str, list[dict]] = {}
+    for q in preguntas:
+        texto_q = f"{oferta.get('cargo', '')} {angulo_of or ''} {q}"
+        logros_por_pregunta[q] = evaluador_ia.consultar_grafo_contexto(texto_q, angulo=angulo_of, top_k=4)
 
     # Detección de proveedor
     prov = evaluador_ia.detectar_proveedor_ia(rol="asistente-postulacion")
     if prov["provider"] == "heuristica":
         respuestas = [responder_heuristicas(q, oferta, idioma_res) for q in preguntas]
     else:
-        respuestas = responder_con_ia(preguntas, oferta, idioma_res, logros)
+        respuestas = responder_con_ia(preguntas, oferta, idioma_res, logros_por_pregunta)
 
     md_texto = formatear_markdown(oferta, respuestas, idioma_res)
 

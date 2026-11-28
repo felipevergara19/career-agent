@@ -40,7 +40,8 @@ class MoverPayload(BaseModel):
 class PipelinePayload(BaseModel):
     foco: str = ""
     sin_busqueda: bool = False
-    max_eval: int = 12
+    max_eval: int = 20
+    limpiar_cache: bool = False
 
 
 class AnalizarUrlPayload(BaseModel):
@@ -217,19 +218,19 @@ def listar_ofertas():
 
 @app.post("/api/ofertas/{oferta_id}/mover")
 def mover_oferta(oferta_id: str, body: MoverPayload):
-    # Si se arrastra directo a cv_generado y no tiene CV todavía, ensamblarlo automáticamente
+    args = ["mover", oferta_id, body.estado]
+    # Al mover a cv_generado desde Kanban sin CV previo, enlazar el CV base genérico (sin auto-generar uno nuevo)
     if body.estado == "cv_generado":
         ofertas = listar_ofertas()
         actual = next((o for o in ofertas if o["id"] == oferta_id), None)
         if actual and not actual.get("cv"):
-            res_cv = _run_py("ensamblar_cv.py", "--oferta", oferta_id)
-            if res_cv.returncode != 0:
-                raise HTTPException(status_code=400, detail=res_cv.stderr or res_cv.stdout)
-            _run_py("estado.py", "sincronizar")
-            _sync_dbs_best_effort()
-            return {"ok": True, "auto_cv": True, "stdout": res_cv.stdout}
-
-    args = ["mover", oferta_id, body.estado]
+            idioma_of = str(actual.get("idioma") or "").lower()
+            es_en = "ingl" in idioma_of or "english" in idioma_of or idioma_of == "en"
+            base_en = ROOT / "cvs-generados" / "base" / "cv-felipe-vergara-penaloza-base-en.md"
+            base_es = ROOT / "cvs-generados" / "base" / "cv-felipe-vergara-penaloza-base-es.md"
+            cv_fallback = base_en if (es_en and base_en.exists()) else (base_es if base_es.exists() else base_en)
+            if cv_fallback.exists():
+                args.extend(["--cv", str(cv_fallback.relative_to(ROOT))])
     if body.forzar:
         args.append("--forzar")
     if body.nota:
@@ -242,6 +243,94 @@ def mover_oferta(oferta_id: str, body: MoverPayload):
     _run_py("estado.py", "sincronizar")
     _sync_dbs_best_effort()
     return {"ok": True, "stdout": res.stdout}
+
+
+@app.get("/api/ofertas/{oferta_id}/keyword-gap")
+def keyword_gap_oferta(oferta_id: str):
+    """Chequeo ATS determinista (0 tokens): compara oferta.keywords contra el CV asignado (o base) y el perfil."""
+    ofertas = listar_ofertas()
+    actual = next((o for o in ofertas if o["id"] == oferta_id), None)
+    if not actual:
+        raise HTTPException(status_code=404, detail="Oferta no encontrada")
+
+    kws = [str(k).strip() for k in (actual.get("keywords") or []) if str(k).strip()]
+    cv_rel = actual.get("cv")
+    if not cv_rel:
+        idm = str(actual.get("idioma") or "").lower()
+        es_en = "ingl" in idm or "english" in idm or idm == "en"
+        cand = f"cvs-generados/base/cv-felipe-vergara-penaloza-base-{'en' if es_en else 'es'}.md"
+        if (ROOT / cand).exists():
+            cv_rel = cand
+
+    cv_txt = ""
+    if cv_rel and (ROOT / cv_rel).exists():
+        cv_txt = (ROOT / cv_rel).read_text(encoding="utf-8", errors="ignore").lower()
+
+    perfil_blob = ""
+    prof_json = ROOT / "perfil" / "perfil-estructurado.json"
+    prof_md = ROOT / "perfil" / "perfil-maestro.md"
+    if prof_json.exists():
+        perfil_blob += prof_json.read_text(encoding="utf-8", errors="ignore").lower()
+    if prof_md.exists():
+        perfil_blob += " " + prof_md.read_text(encoding="utf-8", errors="ignore").lower()
+
+    en_cv, en_perfil_falta_cv, brechas = [], [], []
+    for k in kws:
+        kl = k.lower()
+        if kl in cv_txt:
+            en_cv.append(k)
+        elif kl in perfil_blob:
+            en_perfil_falta_cv.append(k)
+        else:
+            brechas.append(k)
+
+    total = len(kws)
+    cobertura = round((len(en_cv) / total) * 100) if total else 100
+    return {
+        "total": total,
+        "cobertura_pct": cobertura,
+        "cv_usado": cv_rel or "Sin CV",
+        "en_cv": en_cv,
+        "en_perfil_falta_cv": en_perfil_falta_cv,
+        "brechas": brechas,
+    }
+
+
+@app.get("/api/analytics")
+def obtener_analytics():
+    """Embudo de conversión por ángulo, portal y tipo de CV (0 tokens)."""
+    ofertas = listar_ofertas()
+    post_estados = {"postulado", "entrevista_hr", "entrevista_tecnica", "oferta", "rechazada"}
+    ent_estados = {"entrevista_hr", "entrevista_tecnica", "oferta"}
+
+    def _agrupar(key_fn):
+        buckets: dict[str, dict] = {}
+        for o in ofertas:
+            k = key_fn(o) or "otro"
+            b = buckets.setdefault(k, {"nombre": k, "total": 0, "postuladas": 0, "entrevistas": 0, "ofertas": 0})
+            b["total"] += 1
+            est = o.get("estado")
+            if est in post_estados:
+                b["postuladas"] += 1
+            if est in ent_estados:
+                b["entrevistas"] += 1
+            if est == "oferta":
+                b["ofertas"] += 1
+        res = []
+        for b in buckets.values():
+            b["tasa_entrevista_pct"] = round((b["entrevistas"] / b["postuladas"]) * 100, 1) if b["postuladas"] else 0.0
+            res.append(b)
+        res.sort(key=lambda x: (x["postuladas"], x["total"]), reverse=True)
+        return res
+
+    return {
+        "por_angulo": _agrupar(lambda o: o.get("angulo") or "base"),
+        "por_portal": _agrupar(lambda o: o.get("portal") or "Otro"),
+        "por_tipo_cv": _agrupar(
+            lambda o: "CV Base" if (o.get("cv") and "/base/" in str(o.get("cv")))
+            else ("CV Adaptado" if o.get("cv") else "Sin CV")
+        ),
+    }
 
 
 @app.post("/api/ofertas/{oferta_id}/generar-cv")
@@ -500,7 +589,9 @@ def run_pipeline(body: PipelinePayload):
                     ]
                     if body.foco:
                         cmd.extend(["--foco", body.foco])
-                    _log("▶ Etapa 1: Rastreo multi-fuente + Filtros Chile/Remoto + Evaluación IA/GraphRAG...")
+                    if body.limpiar_cache:
+                        cmd.append("--limpiar-cache")
+                    _log("▶ Etapa 1: Rastreo multi-fuente (14 fuentes) + Triaje IA en lote + Evaluación GraphRAG...")
                     rc = _stream_cmd(cmd)
 
                 _log("▶ Etapa 2: Verificando que las ofertas activas sigan abiertas en los portales oficiales...")

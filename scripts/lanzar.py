@@ -39,6 +39,8 @@ HEADLESS = (
 CLAUDE_TOOLS = [
     "Read", "Write", "Edit", "Glob", "Grep", "WebSearch", "WebFetch", "Agent",
     "Bash(python3 scripts/estado.py:*)",
+    "Bash(python3 scripts/rastrear_ats.py:*)",
+    "Bash(python3 scripts/evaluador_ia.py:*)",
     "Bash(python3 scripts/drive_sync.py:*)",
     "Bash(python3 .agents/skills/adaptador-cv/scripts/render_cv.py:*)",
     "Bash(python3 .agents/skills/perfil-tracker/scripts/actualizar_excel.py:*)",
